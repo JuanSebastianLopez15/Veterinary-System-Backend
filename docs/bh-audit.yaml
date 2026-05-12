@@ -1,0 +1,269 @@
+openapi: 3.0.3
+info:
+  title: B&H Veterinary System — bh-audit
+  description: |
+    Servicio de trazabilidad para Breaze & Harold Veterinary System.
+    Recibe y almacena acciones de bh-core. No tiene auth propia — aislado por red K8s.
+  version: 1.0.0
+  contact:
+    name: Equipo B&H
+servers:
+  - url: http://bh-audit-service:3001
+    description: Servicio interno dentro del clúster Kubernetes
+tags:
+  - name: Audit Events
+    description: Recepción y consulta de eventos de auditoría
+
+paths:
+  /api/v1/audit/events:
+    post:
+      tags: [Audit Events]
+      operationId: createAuditEvent
+      summary: Registrar un evento de auditoría
+      description: Recibe un evento de bh-core y lo almacena permanentemente. Solo accesible internamente.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAuditEventRequest'
+            examples:
+              registroUsuario:
+                summary: Registro de nuevo usuario
+                value:
+                  action: REGISTRO_USUARIO
+                  userId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                  userRole: cliente
+                  entityType: User
+                  entityId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                  details: { email: "carlos@email.com", firstName: "Carlos" }
+                  ipAddress: "192.168.1.100"
+              loginFallido:
+                summary: Login fallido
+                value:
+                  action: LOGIN_FALLIDO
+                  userId: null
+                  userRole: null
+                  entityType: User
+                  entityId: null
+                  details: { email: "x@mail.com", reason: "Credenciales incorrectas" }
+                  ipAddress: "203.0.113.45"
+      responses:
+        '201':
+          description: Evento registrado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditEventResponse'
+        '400':
+          description: Datos del evento inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno del servidor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      tags: [Audit Events]
+      operationId: getAuditEvents
+      summary: Consultar eventos con filtros
+      description: Consulta paginada de historial de acciones. Consumido por bh-core para el admin.
+      parameters:
+        - name: action
+          in: query
+          schema:
+            $ref: '#/components/schemas/AuditAction'
+        - name: userId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: userRole
+          in: query
+          schema:
+            type: string
+            enum: [cliente, recepcionista, veterinario, administrador]
+        - name: entityType
+          in: query
+          schema:
+            type: string
+            enum: [User, Appointment, MedicalRecord, Vaccination, Hospitalization, Invoice, InventoryProduct, Service, Pet, Payment]
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: sortOrder
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: Lista paginada de eventos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAuditEventsResponse'
+        '400':
+          description: Parámetros inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    AuditAction:
+      type: string
+      enum:
+        - REGISTRO_USUARIO
+        - VERIFICACION_CORREO
+        - APROBACION_CUENTA
+        - RECHAZO_CUENTA
+        - LOGIN_EXITOSO
+        - LOGIN_FALLIDO
+        - CREACION_CITA
+        - CAMBIO_ESTADO_CITA
+        - CREACION_HISTORIAL_MEDICO
+        - EDICION_HISTORIAL_MEDICO
+        - REGISTRO_VACUNA
+        - INICIO_HOSPITALIZACION
+        - ALTA_HOSPITALIZACION
+        - CREACION_FACTURA
+        - ANULACION_FACTURA
+        - AJUSTE_INVENTARIO
+        - CREACION_SERVICIO
+        - EDICION_SERVICIO
+        - DESACTIVACION_SERVICIO
+        - PAGO_CITA_REGISTRADO
+        - SUSPENSION_USUARIO
+
+    CreateAuditEventRequest:
+      type: object
+      required: [action, entityType, details]
+      properties:
+        action:
+          $ref: '#/components/schemas/AuditAction'
+        userId:
+          type: string
+          format: uuid
+          nullable: true
+        userRole:
+          type: string
+          nullable: true
+          enum: [cliente, recepcionista, veterinario, administrador]
+        entityType:
+          type: string
+          enum: [User, Appointment, MedicalRecord, Vaccination, Hospitalization, Invoice, InventoryProduct, Service, Pet, Payment]
+        entityId:
+          type: string
+          format: uuid
+          nullable: true
+        details:
+          type: object
+          additionalProperties: true
+        ipAddress:
+          type: string
+          example: "192.168.1.100"
+
+    AuditEventResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        action:
+          $ref: '#/components/schemas/AuditAction'
+        userId:
+          type: string
+          format: uuid
+          nullable: true
+        userRole:
+          type: string
+          nullable: true
+        entityType:
+          type: string
+        entityId:
+          type: string
+          format: uuid
+          nullable: true
+        details:
+          type: object
+          additionalProperties: true
+        ipAddress:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    PaginatedAuditEventsResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEventResponse'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    PaginationMeta:
+      type: object
+      properties:
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+        totalPages:
+          type: integer
+
+    ErrorResponse:
+      type: object
+      required: [statusCode, error, message, timestamp, path]
+      properties:
+        statusCode:
+          type: integer
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              issue:
+                type: string
+        timestamp:
+          type: string
+          format: date-time
+        path:
+          type: string

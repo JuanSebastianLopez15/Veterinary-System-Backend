@@ -1,0 +1,2020 @@
+openapi: 3.0.3
+info:
+  title: B&H Veterinary System — bh-core
+  description: |
+    Sistema principal de B&H
+    Gestiona toda la operación de la clinica: usuarios, clientes, mascotas, citas, historiales médicos, inventario y facturacion.
+  version: 1.0.0
+  contact:
+    name: Equipo B&H
+servers:
+  - url: /api/v1
+    description: API v1
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # --- Auth ---
+    RegisterRequest:
+      type: object
+      required: [email, password, firstName, lastName, phone, role]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+        firstName:
+          type: string
+        lastName:
+          type: string
+        phone:
+          type: string
+        role:
+          type: string
+          enum: [cliente, recepcionista, veterinario]
+    VerifyEmailRequest:
+      type: object
+      required: [email, code]
+      properties:
+        email:
+          type: string
+          format: email
+        code:
+          type: string
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+    LoginResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+
+    # --- Users ---
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        firstName:
+          type: string
+        lastName:
+          type: string
+        phone:
+          type: string
+        role:
+          type: string
+          enum: [cliente, recepcionista, veterinario, administrador]
+        status:
+          type: string
+          enum: [pendiente_verificacion, pendiente_aprobacion, activo, suspendido, rechazado]
+        createdAt:
+          type: string
+          format: date-time
+    UpdateProfileRequest:
+      type: object
+      properties:
+        firstName:
+          type: string
+        lastName:
+          type: string
+        phone:
+          type: string
+
+    # --- Clientes ---
+    CreateClientRequest:
+      type: object
+      required: [userId, address, city]
+      properties:
+        userId:
+          type: string
+          format: uuid
+        address:
+          type: string
+        city:
+          type: string
+    UpdateClientRequest:
+      type: object
+      properties:
+        address:
+          type: string
+        city:
+          type: string
+    ClientResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        address:
+          type: string
+        city:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        user:
+          $ref: '#/components/schemas/UserResponse'
+
+    # --- mascotas ---
+    CreatePetRequest:
+      type: object
+      required: [name, species, breed, color, birthDate, weight]
+      properties:
+        name:
+          type: string
+        species:
+          type: string
+        breed:
+          type: string
+        color:
+          type: string
+        birthDate:
+          type: string
+          format: date
+        weight:
+          type: number
+    UpdatePetRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        species:
+          type: string
+        breed:
+          type: string
+        color:
+          type: string
+        birthDate:
+          type: string
+          format: date
+        weight:
+          type: number
+    UpdatePetStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [activa, hospitalizada, fallecida]
+    PetResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        clientId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        species:
+          type: string
+        breed:
+          type: string
+        color:
+          type: string
+        birthDate:
+          type: string
+          format: date
+        weight:
+          type: number
+        status:
+          type: string
+          enum: [activa, hospitalizada, fallecida]
+        createdAt:
+          type: string
+          format: date-time
+
+    # --- Servicios ---
+    CreateServiceRequest:
+      type: object
+      required: [name, description, price]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+    UpdateServiceRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+    ServiceResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # --- Citas ---
+    CreateAppointmentRequest:
+      type: object
+      required: [petId, veterinarianId, scheduledAt, serviceIds, paymentMethod]
+      properties:
+        petId:
+          type: string
+          format: uuid
+        veterinarianId:
+          type: string
+          format: uuid
+        scheduledAt:
+          type: string
+          format: date-time
+        serviceIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        paymentMethod:
+          type: string
+          enum: [efectivo, tarjeta, transferencia]
+    AppointmentResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        petId:
+          type: string
+          format: uuid
+        veterinarianId:
+          type: string
+          format: uuid
+        clientId:
+          type: string
+          format: uuid
+        scheduledAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [confirmada, en_atencion, finalizada, cancelada]
+        cancellationReason:
+          type: string
+        totalAmount:
+          type: number
+        paymentId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        services:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceResponse'
+    CancelAppointmentRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
+
+    # --- Historiales Clinicos ---
+    CreateMedicalRecordRequest:
+      type: object
+      required: [visitReason, diagnosis, treatment, petWeight]
+      properties:
+        visitReason:
+          type: string
+        diagnosis:
+          type: string
+        treatment:
+          type: string
+        petWeight:
+          type: number
+        nextVisitDate:
+          type: string
+          format: date
+        prescriptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PrescriptionInput'
+    UpdateMedicalRecordRequest:
+      type: object
+      properties:
+        visitReason:
+          type: string
+        diagnosis:
+          type: string
+        treatment:
+          type: string
+        petWeight:
+          type: number
+        nextVisitDate:
+          type: string
+          format: date
+        prescriptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PrescriptionInput'
+    PrescriptionInput:
+      type: object
+      required: [medicationName, dosage, duration]
+      properties:
+        medicationName:
+          type: string
+        dosage:
+          type: string
+        duration:
+          type: string
+        inventoryProductId:
+          type: string
+          format: uuid
+          nullable: true
+    MedicalRecordResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        appointmentId:
+          type: string
+          format: uuid
+        petId:
+          type: string
+          format: uuid
+        veterinarianId:
+          type: string
+          format: uuid
+        visitReason:
+          type: string
+        diagnosis:
+          type: string
+        treatment:
+          type: string
+        petWeight:
+          type: number
+        nextVisitDate:
+          type: string
+          format: date
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        editableUntil:
+          type: string
+          format: date-time
+        prescriptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PrescriptionInput'
+
+    # --- Vacunas ---
+    CreateVaccinationRequest:
+      type: object
+      required: [vaccineName, applicationDate]
+      properties:
+        vaccineName:
+          type: string
+        applicationDate:
+          type: string
+          format: date
+        nextDoseDate:
+          type: string
+          format: date
+    VaccinationResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        medicalRecordId:
+          type: string
+          format: uuid
+        petId:
+          type: string
+          format: uuid
+        vaccineName:
+          type: string
+        applicationDate:
+          type: string
+          format: date
+        nextDoseDate:
+          type: string
+          format: date
+
+    # --- Hospitalizaciones ---
+    CreateHospitalizationRequest:
+      type: object
+      required: [admissionDate, reason]
+      properties:
+        admissionDate:
+          type: string
+          format: date-time
+        reason:
+          type: string
+          description: Motivo o contexto del ingreso de la mascota
+    DischargeHospitalizationRequest:
+      type: object
+      required: [dischargeStatus]
+      properties:
+        dischargeStatus:
+          type: string
+          enum: [recuperada, fallecida, trasladada]
+    CreateEvolutionNoteRequest:
+      type: object
+      required: [note]
+      properties:
+        note:
+          type: string
+    EvolutionNoteResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        hospitalizationId:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date-time
+        note:
+          type: string
+        veterinarianId:
+          type: string
+          format: uuid
+    HospitalizationResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        petId:
+          type: string
+          format: uuid
+        veterinarianId:
+          type: string
+          format: uuid
+        admissionDate:
+          type: string
+          format: date-time
+        dischargeDate:
+          type: string
+          format: date-time
+        dischargeStatus:
+          type: string
+          enum: [recuperada, fallecida, trasladada]
+        isActive:
+          type: boolean
+        evolutionNotes:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvolutionNoteResponse'
+
+    # --- Inventario ---
+    CreateInventoryProductRequest:
+      type: object
+      required: [name, category, stock, minStock, price]
+      properties:
+        name:
+          type: string
+        category:
+          type: string
+          enum: [medicamento, vacuna, insumo_quirurgico]
+        stock:
+          type: integer
+        minStock:
+          type: integer
+        price:
+          type: number
+        expirationDate:
+          type: string
+          format: date
+    UpdateInventoryProductRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        price:
+          type: number
+        minStock:
+          type: integer
+        expirationDate:
+          type: string
+          format: date
+    AdjustStockRequest:
+      type: object
+      required: [quantity, reason]
+      properties:
+        quantity:
+          type: integer
+          description: Cantidad a sumar o restar del stock actual
+        reason:
+          type: string
+    InventoryProductResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        category:
+          type: string
+          enum: [medicamento, vacuna, insumo_quirurgico]
+        stock:
+          type: integer
+        minStock:
+          type: integer
+        price:
+          type: number
+        expirationDate:
+          type: string
+          format: date
+        createdAt:
+          type: string
+          format: date-time
+
+    # --- Invoices ---
+    CreateInvoiceRequest:
+      type: object
+      properties:
+        discount:
+          type: number
+          default: 0
+    VoidInvoiceRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
+    InvoiceResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        appointmentId:
+          type: string
+          format: uuid
+        clientId:
+          type: string
+          format: uuid
+        subtotal:
+          type: number
+        discount:
+          type: number
+        prepaidAmount:
+          type: number
+        totalDue:
+          type: number
+        status:
+          type: string
+          enum: [pendiente, pagada, anulada]
+        voidReason:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        services:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceResponse'
+        additionalMedications:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              price:
+                type: number
+              quantity:
+                type: integer
+
+    # --- Paginación y Errores ---
+    PaginatedUsersResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserResponse'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+    PaginatedClientsResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClientResponse'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+    PaginatedServicesResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceResponse'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+    PaginatedAppointmentsResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AppointmentResponse'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+    PaginatedMedicalRecordsResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/MedicalRecordResponse'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+    PaginatedVaccinationsResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/VaccinationResponse'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+    PaginatedHospitalizationsResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/HospitalizationResponse'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+    PaginatedInventoryResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/InventoryProductResponse'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+    PaginatedInvoicesResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/InvoiceResponse'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    PaginationMeta:
+      type: object
+      properties:
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+        totalPages:
+          type: integer
+
+    ErrorResponse:
+      type: object
+      required: [statusCode, error, message, timestamp, path]
+      properties:
+        statusCode:
+          type: integer
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              issue:
+                type: string
+        timestamp:
+          type: string
+          format: date-time
+        path:
+          type: string
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: System
+    description: Endpoints de sistema
+  - name: Auth
+    description: Autenticación y registro
+  - name: Users
+    description: Gestión de usuarios del sistema
+  - name: Clients
+    description: Gestión de clientes (dueños de mascotas)
+  - name: Pets
+    description: Gestión de mascotas
+  - name: Services
+    description: Catálogo de servicios
+  - name: Appointments
+    description: Agenda de citas
+  - name: Medical Records
+    description: Historial médico
+  - name: Vaccinations
+    description: Registro de vacunas
+  - name: Hospitalizations
+    description: Gestión de internamiento
+  - name: Inventory
+    description: Control de inventario
+  - name: Invoices
+    description: Facturación
+  - name: Reports
+    description: Generación de reportes
+
+paths:
+  /health:
+    get:
+      tags: [System]
+      summary: Health check para Kubernetes
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Registro de nuevo usuario
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Usuario registrado, pendiente verificación
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          description: Datos inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /auth/verify-email:
+    post:
+      tags: [Auth]
+      summary: Verificar correo
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyEmailRequest'
+      responses:
+        '200':
+          description: Correo verificado
+        '400':
+          description: Código inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Iniciar sesión
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login exitoso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Credenciales incorrectas o cuenta inactiva
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refrescar token
+      responses:
+        '200':
+          description: Nuevo token generado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Token inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Perfil propio
+      responses:
+        '200':
+          description: Perfil del usuario autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+    patch:
+      tags: [Auth]
+      summary: Actualizar perfil propio
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          description: Perfil actualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+
+  /users:
+    get:
+      tags: [Users]
+      summary: Listar usuarios
+      responses:
+        '200':
+          description: Lista de usuarios
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedUsersResponse'
+  /users/{id}:
+    get:
+      tags: [Users]
+      summary: Detalle de usuario
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Usuario encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '404':
+          description: Usuario no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /users/{id}/approve:
+    patch:
+      tags: [Users]
+      summary: Aprobar cuenta
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Cuenta aprobada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+  /users/{id}/reject:
+    patch:
+      tags: [Users]
+      summary: Rechazar cuenta
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Cuenta rechazada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+  /users/{id}/suspend:
+    patch:
+      tags: [Users]
+      summary: Suspender usuario
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Usuario suspendido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+
+  /clients:
+    post:
+      tags: [Clients]
+      summary: Registrar nuevo cliente
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateClientRequest'
+      responses:
+        '201':
+          description: Cliente registrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientResponse'
+    get:
+      tags: [Clients]
+      summary: Listar clientes
+      responses:
+        '200':
+          description: Lista paginada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedClientsResponse'
+  /clients/{id}:
+    get:
+      tags: [Clients]
+      summary: Detalle de cliente
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Cliente encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientResponse'
+        '404':
+          description: Cliente no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    patch:
+      tags: [Clients]
+      summary: Actualizar cliente
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateClientRequest'
+      responses:
+        '200':
+          description: Cliente actualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientResponse'
+
+  /clients/{clientId}/pets:
+    post:
+      tags: [Pets]
+      summary: Registrar mascota a un cliente
+      parameters:
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePetRequest'
+      responses:
+        '201':
+          description: Mascota registrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PetResponse'
+    get:
+      tags: [Pets]
+      summary: Listar mascotas de un cliente
+      parameters:
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Lista de mascotas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PetResponse'
+  /pets/{id}:
+    get:
+      tags: [Pets]
+      summary: Detalle de mascota
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Mascota encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PetResponse'
+    patch:
+      tags: [Pets]
+      summary: Actualizar datos de mascota
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePetRequest'
+      responses:
+        '200':
+          description: Mascota actualizada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PetResponse'
+  /pets/{id}/status:
+    patch:
+      tags: [Pets]
+      summary: Cambiar estado de mascota
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePetStatusRequest'
+      responses:
+        '200':
+          description: Estado actualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PetResponse'
+
+  /services:
+    post:
+      tags: [Services]
+      summary: Crear servicio
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateServiceRequest'
+      responses:
+        '201':
+          description: Servicio creado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceResponse'
+    get:
+      tags: [Services]
+      summary: Listar servicios
+      responses:
+        '200':
+          description: Lista de servicios
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedServicesResponse'
+  /services/{id}:
+    get:
+      tags: [Services]
+      summary: Detalle de servicio
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Servicio encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceResponse'
+    patch:
+      tags: [Services]
+      summary: Actualizar servicio
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateServiceRequest'
+      responses:
+        '200':
+          description: Servicio actualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceResponse'
+  /services/{id}/deactivate:
+    patch:
+      tags: [Services]
+      summary: Desactivar servicio
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Servicio desactivado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceResponse'
+
+  /appointments:
+    post:
+      tags: [Appointments]
+      summary: Agendar cita
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAppointmentRequest'
+      responses:
+        '201':
+          description: Cita agendada (requiere pago)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppointmentResponse'
+        '409':
+          description: Cruce de horarios
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Pago no proporcionado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      tags: [Appointments]
+      summary: Listar citas
+      parameters:
+        - name: mine
+          in: query
+          description: Si es true, retorna solo las citas del usuario autenticado
+          required: false
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Lista de citas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAppointmentsResponse'
+  /appointments/{id}:
+    get:
+      tags: [Appointments]
+      summary: Detalle de cita
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Cita encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppointmentResponse'
+  /appointments/{id}/attend:
+    patch:
+      tags: [Appointments]
+      summary: Marcar cita en atención
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Cita en atención
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppointmentResponse'
+  /appointments/{id}/complete:
+    patch:
+      tags: [Appointments]
+      summary: Finalizar cita
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Cita finalizada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppointmentResponse'
+  /appointments/{id}/cancel:
+    patch:
+      tags: [Appointments]
+      summary: Cancelar cita
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelAppointmentRequest'
+      responses:
+        '200':
+          description: Cita cancelada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppointmentResponse'
+
+  /appointments/{appointmentId}/medical-records:
+    post:
+      tags: [Medical Records]
+      summary: Crear registro médico
+      parameters:
+        - name: appointmentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMedicalRecordRequest'
+      responses:
+        '201':
+          description: Registro médico creado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MedicalRecordResponse'
+  /pets/{petId}/medical-records:
+    get:
+      tags: [Medical Records]
+      summary: Historial médico de mascota
+      parameters:
+        - name: petId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Lista de registros médicos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedMedicalRecordsResponse'
+  /medical-records/{id}:
+    get:
+      tags: [Medical Records]
+      summary: Detalle de registro médico
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Registro médico encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MedicalRecordResponse'
+    patch:
+      tags: [Medical Records]
+      summary: Corregir registro médico (dentro de 24h)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMedicalRecordRequest'
+      responses:
+        '200':
+          description: Registro corregido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MedicalRecordResponse'
+        '403':
+          description: Edición no permitida (pasaron 24h)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /medical-records/{recordId}/vaccinations:
+    post:
+      tags: [Vaccinations]
+      summary: Registrar vacuna
+      parameters:
+        - name: recordId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateVaccinationRequest'
+      responses:
+        '201':
+          description: Vacuna registrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VaccinationResponse'
+  /pets/{petId}/vaccinations:
+    get:
+      tags: [Vaccinations]
+      summary: Historial de vacunas de mascota
+      parameters:
+        - name: petId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Lista de vacunas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedVaccinationsResponse'
+  /vaccinations/upcoming:
+    get:
+      tags: [Vaccinations]
+      summary: Vacunas próximas a vencer
+      responses:
+        '200':
+          description: Lista de vacunas próximas a vencer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedVaccinationsResponse'
+
+  /pets/{petId}/hospitalizations:
+    post:
+      tags: [Hospitalizations]
+      summary: Internar mascota
+      parameters:
+        - name: petId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateHospitalizationRequest'
+      responses:
+        '201':
+          description: Mascota internada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HospitalizationResponse'
+  /hospitalizations:
+    get:
+      tags: [Hospitalizations]
+      summary: Listar hospitalizaciones activas
+      responses:
+        '200':
+          description: Lista de hospitalizaciones
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedHospitalizationsResponse'
+  /hospitalizations/{id}:
+    get:
+      tags: [Hospitalizations]
+      summary: Detalle de hospitalización
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Hospitalización encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HospitalizationResponse'
+  /hospitalizations/{id}/evolution-notes:
+    post:
+      tags: [Hospitalizations]
+      summary: Agregar nota de evolución
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEvolutionNoteRequest'
+      responses:
+        '201':
+          description: Nota agregada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvolutionNoteResponse'
+    get:
+      tags: [Hospitalizations]
+      summary: Listar notas de evolución
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Lista de notas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EvolutionNoteResponse'
+  /hospitalizations/{id}/discharge:
+    patch:
+      tags: [Hospitalizations]
+      summary: Dar de alta mascota
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DischargeHospitalizationRequest'
+      responses:
+        '200':
+          description: Mascota dada de alta
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HospitalizationResponse'
+
+  /inventory:
+    post:
+      tags: [Inventory]
+      summary: Registrar producto en inventario
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInventoryProductRequest'
+      responses:
+        '201':
+          description: Producto registrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryProductResponse'
+    get:
+      tags: [Inventory]
+      summary: Listar productos
+      responses:
+        '200':
+          description: Lista de productos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedInventoryResponse'
+  /inventory/low-stock:
+    get:
+      tags: [Inventory]
+      summary: Productos con stock por debajo del mínimo
+      description: >
+        **Nota de implementación:** Para evitar conflictos de enrutamiento en NestJS,
+        este endpoint debe registrarse en el controlador antes que el endpoint con
+        parámetro de ruta (`/inventory/{id}`).
+      responses:
+        '200':
+          description: Lista de productos con stock bajo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedInventoryResponse'
+  /inventory/expiring:
+    get:
+      tags: [Inventory]
+      summary: Productos próximos a vencer
+      description: >
+        **Nota de implementación:** Para evitar conflictos de enrutamiento en NestJS,
+        este endpoint debe registrarse en el controlador antes que el endpoint con
+        parámetro de ruta (`/inventory/{id}`).
+      responses:
+        '200':
+          description: Lista de productos próximos a vencer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedInventoryResponse'
+  /inventory/{id}:
+    get:
+      tags: [Inventory]
+      summary: Detalle de producto
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Producto encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryProductResponse'
+    patch:
+      tags: [Inventory]
+      summary: Actualizar producto
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateInventoryProductRequest'
+      responses:
+        '200':
+          description: Producto actualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryProductResponse'
+  /inventory/{id}/adjust-stock:
+    patch:
+      tags: [Inventory]
+      summary: Ajuste manual de stock
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdjustStockRequest'
+      responses:
+        '200':
+          description: Stock ajustado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryProductResponse'
+
+  /appointments/{appointmentId}/invoices:
+    post:
+      tags: [Invoices]
+      summary: Generar factura post-atención
+      parameters:
+        - name: appointmentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInvoiceRequest'
+      responses:
+        '201':
+          description: Factura generada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvoiceResponse'
+  /invoices:
+    get:
+      tags: [Invoices]
+      summary: Listar facturas
+      parameters:
+        - name: mine
+          in: query
+          description: Si es true, retorna solo las facturas del usuario autenticado
+          required: false
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Lista paginada de facturas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedInvoicesResponse'
+  /invoices/{id}:
+    get:
+      tags: [Invoices]
+      summary: Detalle de factura
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Factura encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvoiceResponse'
+  /invoices/{id}/pay:
+    patch:
+      tags: [Invoices]
+      summary: Marcar factura como pagada
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Factura pagada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvoiceResponse'
+  /invoices/{id}/void:
+    patch:
+      tags: [Invoices]
+      summary: Anular factura
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VoidInvoiceRequest'
+      responses:
+        '200':
+          description: Factura anulada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvoiceResponse'
+  /invoices/{id}/pdf:
+    get:
+      tags: [Invoices]
+      summary: Descargar factura en PDF
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Archivo PDF
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+
+  /reports/appointments:
+    get:
+      tags: [Reports]
+      summary: Reporte de citas
+      parameters:
+        - name: startDate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Reporte en PDF
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '403':
+          description: Acceso denegado (requiere rol de administrador)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /reports/billing:
+    get:
+      tags: [Reports]
+      summary: Reporte de facturación
+      parameters:
+        - name: startDate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Reporte en PDF
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '403':
+          description: Acceso denegado (requiere rol de administrador)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /reports/inventory:
+    get:
+      tags: [Reports]
+      summary: Reporte de inventario
+      responses:
+        '200':
+          description: Reporte en PDF
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '403':
+          description: Acceso denegado (requiere rol de administrador)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /reports/audit-log:
+    get:
+      tags: [Reports]
+      summary: Reporte de historial de acciones
+      parameters:
+        - name: startDate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Reporte en PDF
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '403':
+          description: Acceso denegado (requiere rol de administrador)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
