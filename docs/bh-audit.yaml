@@ -2,25 +2,70 @@ openapi: 3.0.3
 info:
   title: B&H Veterinary System — bh-audit
   description: |
-    Servicio de trazabilidad para Breaze & Harold Veterinary System.
-    Recibe y almacena acciones de bh-core. No tiene auth propia — aislado por red K8s.
+    Servicio de trazabilidad para B&H.
+
+    Este microservicio tiene un único propósito: **recibir y almacenar el registro
+    de todas las acciones relevantes** que ocurren en `bh-core`, y permitir su
+    consulta con filtros.
+
+    ## Características
+    - No tiene usuarios propios ni maneja sesiones
+    - Solo recibe solicitudes de `bh-core` desde dentro del clúster de Kubernetes
+    - Tiene su propia base de datos independiente
+    - Si este servicio no está disponible, `bh-core` sigue operando con normalidad
+
+    ## Seguridad de red
+    Este servicio **no es accesible desde fuera del clúster**. La seguridad se
+    garantiza por aislamiento de red en Kubernetes. No implementa autenticación
+    propia.
   version: 1.0.0
   contact:
     name: Equipo B&H
+  license:
+    name: MIT
+
 servers:
   - url: http://bh-audit-service:3001
     description: Servicio interno dentro del clúster Kubernetes
+
 tags:
+  - name: System
+    description: Endpoints de sistema
   - name: Audit Events
     description: Recepción y consulta de eventos de auditoría
 
 paths:
+  /health:
+    get:
+      tags:
+        - System
+      operationId: checkHealth
+      summary: Health check para Kubernetes
+      description: Endpoint utilizado por los probes liveness y readiness de Kubernetes.
+      responses:
+        '200':
+          description: El servicio está funcionando correctamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+
   /api/v1/audit/events:
     post:
-      tags: [Audit Events]
+      tags:
+        - Audit Events
       operationId: createAuditEvent
       summary: Registrar un evento de auditoría
-      description: Recibe un evento de bh-core y lo almacena permanentemente. Solo accesible internamente.
+      description: |
+        Recibe un evento de auditoría enviado por `bh-core` y lo almacena de forma
+        permanente. Este endpoint es invocado internamente cada vez que ocurre una
+        acción relevante en el sistema principal.
+
+        **Solo accesible desde `bh-core` dentro del clúster.**
       requestBody:
         required: true
         content:
@@ -36,17 +81,22 @@ paths:
                   userRole: cliente
                   entityType: User
                   entityId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-                  details: { email: "carlos@email.com", firstName: "Carlos" }
+                  details:
+                    email: "carlos.lopez@email.com"
+                    firstName: "Carlos"
+                    lastName: "López"
                   ipAddress: "192.168.1.100"
               loginFallido:
-                summary: Login fallido
+                summary: Intento de login fallido
                 value:
                   action: LOGIN_FALLIDO
                   userId: null
                   userRole: null
                   entityType: User
                   entityId: null
-                  details: { email: "x@mail.com", reason: "Credenciales incorrectas" }
+                  details:
+                    email: "usuario@desconocido.com"
+                    reason: "Credenciales incorrectas"
                   ipAddress: "203.0.113.45"
       responses:
         '201':
@@ -56,7 +106,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/AuditEventResponse'
         '400':
-          description: Datos del evento inválidos
+          description: Datos del evento inválidos o incompletos
           content:
             application/json:
               schema:
@@ -69,48 +119,86 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
 
     get:
-      tags: [Audit Events]
+      tags:
+        - Audit Events
       operationId: getAuditEvents
-      summary: Consultar eventos con filtros
-      description: Consulta paginada de historial de acciones. Consumido por bh-core para el admin.
+      summary: Consultar eventos de auditoría con filtros
+      description: |
+        Permite consultar el historial de eventos con filtros opcionales.
+
+        > **CRÍTICO: USO EXCLUSIVO INTERNO**
+        > Este endpoint NO DEBE exponerse hacia el exterior (ni siquiera para el rol Administrador).
+        > Su único consumidor es `bh-core`, el cual lo invoca internamente cuando el Administrador solicita consultar el historial o generar el PDF.
       parameters:
         - name: action
           in: query
+          required: false
+          description: Filtrar por tipo de acción
           schema:
             $ref: '#/components/schemas/AuditAction'
         - name: userId
           in: query
+          required: false
+          description: Filtrar por ID del usuario que ejecutó la acción
           schema:
             type: string
             format: uuid
         - name: userRole
           in: query
+          required: false
+          description: Filtrar por rol del usuario
           schema:
             type: string
-            enum: [cliente, recepcionista, veterinario, administrador]
+            enum:
+              - cliente
+              - recepcionista
+              - veterinario
+              - administrador
         - name: entityType
           in: query
+          required: false
+          description: Filtrar por tipo de entidad afectada
           schema:
             type: string
-            enum: [User, Appointment, MedicalRecord, Vaccination, Hospitalization, Invoice, InventoryProduct, Service, Pet, Payment]
+            enum:
+              - User
+              - Appointment
+              - MedicalRecord
+              - Vaccination
+              - Hospitalization
+              - Invoice
+              - InventoryProduct
+              - Service
+              - Pet
+              - Payment
         - name: startDate
           in: query
+          required: false
+          description: Inicio del rango de fechas (ISO 8601)
           schema:
             type: string
             format: date-time
+          example: "2026-05-01T00:00:00-05:00"
         - name: endDate
           in: query
+          required: false
+          description: Fin del rango de fechas (ISO 8601)
           schema:
             type: string
             format: date-time
+          example: "2026-05-31T23:59:59-05:00"
         - name: page
           in: query
+          required: false
+          description: Número de página (inicia en 1)
           schema:
             type: integer
             minimum: 1
             default: 1
         - name: limit
           in: query
+          required: false
+          description: Resultados por página
           schema:
             type: integer
             minimum: 1
@@ -118,19 +206,29 @@ paths:
             default: 20
         - name: sortOrder
           in: query
+          required: false
+          description: Dirección del ordenamiento
           schema:
             type: string
-            enum: [asc, desc]
+            enum:
+              - asc
+              - desc
             default: desc
       responses:
         '200':
-          description: Lista paginada de eventos
+          description: Lista paginada de eventos de auditoría
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/PaginatedAuditEventsResponse'
         '400':
-          description: Parámetros inválidos
+          description: Parámetros de consulta inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno del servidor
           content:
             application/json:
               schema:
@@ -140,6 +238,7 @@ components:
   schemas:
     AuditAction:
       type: string
+      description: Tipos de acciones registradas en el sistema de auditoría
       enum:
         - REGISTRO_USUARIO
         - VERIFICACION_CORREO
@@ -165,7 +264,10 @@ components:
 
     CreateAuditEventRequest:
       type: object
-      required: [action, entityType, details]
+      required:
+        - action
+        - entityType
+        - details
       properties:
         action:
           $ref: '#/components/schemas/AuditAction'
@@ -173,22 +275,48 @@ components:
           type: string
           format: uuid
           nullable: true
+          description: ID del usuario que ejecutó la acción. Null para acciones sin usuario autenticado (ej. login fallido).
         userRole:
-          type: string
           nullable: true
-          enum: [cliente, recepcionista, veterinario, administrador]
+          type: string
+          enum:
+            - cliente
+            - recepcionista
+            - veterinario
+            - administrador
+          description: Rol del usuario al momento de la acción. Null si no hay usuario.
         entityType:
           type: string
-          enum: [User, Appointment, MedicalRecord, Vaccination, Hospitalization, Invoice, InventoryProduct, Service, Pet, Payment]
+          description: Tipo de entidad afectada por la acción
+          enum:
+            - User
+            - Appointment
+            - MedicalRecord
+            - Vaccination
+            - Hospitalization
+            - Invoice
+            - InventoryProduct
+            - Service
+            - Pet
+            - Payment
         entityId:
           type: string
           format: uuid
           nullable: true
+          description: ID de la entidad afectada. Null si no aplica.
         details:
           type: object
           additionalProperties: true
+          description: |
+            Datos adicionales contextuales sobre la acción.
+            **NOTA:** La estructura interna de este objeto varía completamente según el tipo de acción.
+            Ejemplos:
+            - Para login fallido: `{ "email": "...", "reason": "Credenciales incorrectas" }`
+            - Para creación de cita: `{ "petName": "...", "veterinarianName": "...", "scheduledAt": "..." }`
+            - Para ajuste de inventario: `{ "productName": "...", "previousStock": 10, "newStock": 25 }`
         ipAddress:
           type: string
+          description: Dirección IP desde donde se originó la acción
           example: "192.168.1.100"
 
     AuditEventResponse:
@@ -197,6 +325,7 @@ components:
         id:
           type: string
           format: uuid
+          description: Identificador único del evento
         action:
           $ref: '#/components/schemas/AuditAction'
         userId:
@@ -204,8 +333,13 @@ components:
           format: uuid
           nullable: true
         userRole:
-          type: string
           nullable: true
+          type: string
+          enum:
+            - cliente
+            - recepcionista
+            - veterinario
+            - administrador
         entityType:
           type: string
         entityId:
@@ -220,6 +354,7 @@ components:
         timestamp:
           type: string
           format: date-time
+          description: Fecha y hora exacta en que se registró el evento
 
     PaginatedAuditEventsResponse:
       type: object
@@ -236,25 +371,42 @@ components:
       properties:
         total:
           type: integer
+          description: Total de registros encontrados
+          example: 245
         page:
           type: integer
+          description: Página actual
+          example: 1
         limit:
           type: integer
+          description: Registros por página
+          example: 20
         totalPages:
           type: integer
+          description: Total de páginas disponibles
+          example: 13
 
     ErrorResponse:
       type: object
-      required: [statusCode, error, message, timestamp, path]
+      required:
+        - statusCode
+        - error
+        - message
+        - timestamp
+        - path
       properties:
         statusCode:
           type: integer
+          example: 400
         error:
           type: string
+          example: "Bad Request"
         message:
           type: string
+          example: "Validación fallida"
         details:
           type: array
+          description: Detalles de validación (solo en errores 400)
           items:
             type: object
             properties:
@@ -267,3 +419,4 @@ components:
           format: date-time
         path:
           type: string
+          example: "/api/v1/audit/events"
