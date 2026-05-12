@@ -2,8 +2,8 @@ openapi: 3.0.3
 info:
   title: B&H Veterinary System — bh-core
   description: |
-    Sistema principal de **Breaze & Harold Veterinary System**.
-    Gestiona toda la operación de la clínica: usuarios, clientes, mascotas, citas, historiales médicos, inventario y facturación.
+    Sistema principal de B&H
+    Gestiona toda la operación de la clinica: usuarios, clientes, mascotas, citas, historiales médicos, inventario y facturacion.
   version: 1.0.0
   contact:
     name: Equipo B&H
@@ -100,7 +100,7 @@ components:
         phone:
           type: string
 
-    # --- Clients ---
+    # --- Clientes ---
     CreateClientRequest:
       type: object
       required: [userId, address, city]
@@ -138,7 +138,7 @@ components:
         user:
           $ref: '#/components/schemas/UserResponse'
 
-    # --- Pets ---
+    # --- mascotas ---
     CreatePetRequest:
       type: object
       required: [name, species, breed, color, birthDate, weight]
@@ -208,7 +208,7 @@ components:
           type: string
           format: date-time
 
-    # --- Services ---
+    # --- Servicios ---
     CreateServiceRequest:
       type: object
       required: [name, description, price]
@@ -249,7 +249,7 @@ components:
           type: string
           format: date-time
 
-    # --- Appointments ---
+    # --- Citas ---
     CreateAppointmentRequest:
       type: object
       required: [petId, veterinarianId, scheduledAt, serviceIds, paymentMethod]
@@ -313,7 +313,7 @@ components:
         reason:
           type: string
 
-    # --- Medical Records ---
+    # --- Historiales Clinicos ---
     CreateMedicalRecordRequest:
       type: object
       required: [visitReason, diagnosis, treatment, petWeight]
@@ -405,7 +405,7 @@ components:
           items:
             $ref: '#/components/schemas/PrescriptionInput'
 
-    # --- Vaccinations ---
+    # --- Vacunas ---
     CreateVaccinationRequest:
       type: object
       required: [vaccineName, applicationDate]
@@ -439,7 +439,7 @@ components:
           type: string
           format: date
 
-    # --- Hospitalizations ---
+    # --- Hospitalizaciones ---
     CreateHospitalizationRequest:
       type: object
       required: [admissionDate, reason]
@@ -508,7 +508,7 @@ components:
           items:
             $ref: '#/components/schemas/EvolutionNoteResponse'
 
-    # --- Inventory ---
+    # --- Inventario ---
     CreateInventoryProductRequest:
       type: object
       required: [name, category, stock, minStock, price]
@@ -629,7 +629,7 @@ components:
               quantity:
                 type: integer
 
-    # --- Pagination & Errors ---
+    # --- Paginación y Errores ---
     PaginatedUsersResponse:
       type: object
       properties:
