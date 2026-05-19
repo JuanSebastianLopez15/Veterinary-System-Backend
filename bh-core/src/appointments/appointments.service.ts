@@ -1,18 +1,209 @@
-import { Inject, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+} from '@nestjs/common';
 import { Pool } from 'pg';
 
 import { DATABASE_POOL } from '../database/database.provider';
 
+type MetodoPago = 'efectivo' | 'tarjeta' | 'transferencia' | 'otro';
+
+export interface CreateAppointmentRequest {
+  usuarioCodigo?: string;
+  mascotaCodigo?: string;
+  clienteCodigo?: string;
+  fecha?: string;
+  hora?: string;
+  serviciosCodigos?: string[];
+  metodoPago?: string;
+}
+
+export interface AppointmentServiceResponse {
+  codigo: string;
+  nombre: string;
+  precioUnitario: number;
+}
+
+export interface AppointmentPaymentResponse {
+  codigo: string;
+  monto: number;
+  metodoPago: MetodoPago;
+  fecha: string;
+}
+
+export interface CreatedAppointmentResponse {
+  codigo: string;
+  total: number;
+  estado: string;
+  servicios: AppointmentServiceResponse[];
+  pago: AppointmentPaymentResponse;
+}
+
+interface ValidatedAppointmentRequest {
+  usuarioCodigo: string;
+  mascotaCodigo: string;
+  clienteCodigo: string;
+  fecha: string;
+  hora: string;
+  serviciosCodigos: string[];
+  metodoPago: MetodoPago;
+}
+
+interface QueryRunner {
+  query<T = any>(
+    query: string,
+    values?: unknown[],
+  ): Promise<{ rows: T[]; rowCount: number }>;
+}
+
+interface ServiceRow {
+  codigo: string;
+  nombre: string;
+  precio: number | string;
+}
+
+interface AppointmentRow {
+  codigo: string;
+  estado: string;
+}
+
+interface PaymentRow {
+  codigo: string;
+  metodoPago: MetodoPago;
+  fecha: string;
+}
+
+const VALID_PAYMENT_METHODS: MetodoPago[] = [
+  'efectivo',
+  'tarjeta',
+  'transferencia',
+  'otro',
+];
+
 @Injectable()
 export class AppointmentsService {
   constructor(@Inject(DATABASE_POOL) private readonly pool: Pool) {}
+
+  async createConfirmedAppointment(
+    body: CreateAppointmentRequest,
+  ): Promise<CreatedAppointmentResponse> {
+    const request = this.validateCreateAppointmentRequest(body);
+    const client = await this.pool.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      const available = await this.isAvailableWithRunner(
+        client,
+        request.usuarioCodigo,
+        request.fecha,
+        request.hora,
+      );
+
+      if (!available) {
+        throw new ConflictException(
+          'No hay disponibilidad para el veterinario en la fecha y hora indicadas',
+        );
+      }
+
+      const services = await this.findActiveServices(client, request.serviciosCodigos);
+      const total = Number(
+        services
+          .reduce((sum, service) => sum + service.precioUnitario, 0)
+          .toFixed(2),
+      );
+
+      const appointmentResult = await client.query<AppointmentRow>(
+        `
+          INSERT INTO cita (
+            usuario_codigo,
+            mascota_codigo,
+            cliente_codigo,
+            fecha,
+            hora,
+            estado,
+            total
+          )
+          VALUES ($1, $2, $3, $4::date, $5::time, 'confirmada', $6)
+          RETURNING codigo, estado
+        `,
+        [
+          request.usuarioCodigo,
+          request.mascotaCodigo,
+          request.clienteCodigo,
+          request.fecha,
+          request.hora,
+          total,
+        ],
+      );
+
+      const appointment = appointmentResult.rows[0];
+
+      for (const service of services) {
+        await client.query(
+          `
+            INSERT INTO cita_servicios (
+              cita_codigo,
+              servicio_codigo,
+              nombre,
+              precio_unitario
+            )
+            VALUES ($1, $2, $3, $4)
+          `,
+          [appointment.codigo, service.codigo, service.nombre, service.precioUnitario],
+        );
+      }
+
+      const paymentResult = await client.query<PaymentRow>(
+        `
+          INSERT INTO pago (cita_codigo, monto, metodo_pago, fecha)
+          VALUES ($1, $2, $3, CURRENT_DATE)
+          RETURNING codigo, metodo_pago AS "metodoPago", fecha
+        `,
+        [appointment.codigo, total, request.metodoPago],
+      );
+
+      await client.query('COMMIT');
+
+      const payment = paymentResult.rows[0];
+
+      return {
+        codigo: appointment.codigo,
+        total,
+        estado: appointment.estado,
+        servicios: services,
+        pago: {
+          codigo: payment.codigo,
+          monto: total,
+          metodoPago: payment.metodoPago,
+          fecha: payment.fecha,
+        },
+      };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
 
   async isAvailable(
     usuarioCodigo: string,
     fecha: string,
     hora: string,
   ): Promise<boolean> {
-    const result = await this.pool.query(
+    return this.isAvailableWithRunner(this.pool, usuarioCodigo, fecha, hora);
+  }
+
+  private async isAvailableWithRunner(
+    runner: QueryRunner,
+    usuarioCodigo: string,
+    fecha: string,
+    hora: string,
+  ): Promise<boolean> {
+    const result = await runner.query(
       `
         SELECT 1
         FROM cita
@@ -26,5 +217,92 @@ export class AppointmentsService {
     );
 
     return result.rowCount === 0;
+  }
+
+  private validateCreateAppointmentRequest(
+    body: CreateAppointmentRequest,
+  ): ValidatedAppointmentRequest {
+    const usuarioCodigo = this.requiredString(body?.usuarioCodigo, 'usuarioCodigo');
+    const mascotaCodigo = this.requiredString(body?.mascotaCodigo, 'mascotaCodigo');
+    const clienteCodigo = this.requiredString(body?.clienteCodigo, 'clienteCodigo');
+    const fecha = this.requiredString(body?.fecha, 'fecha');
+    const hora = this.requiredString(body?.hora, 'hora');
+    const metodoPago = this.requiredString(body?.metodoPago, 'metodoPago');
+
+    if (!Array.isArray(body?.serviciosCodigos) || body.serviciosCodigos.length === 0) {
+      throw new BadRequestException('serviciosCodigos debe ser un arreglo no vacío');
+    }
+
+    const serviciosCodigos = body.serviciosCodigos.map((codigo, index) => {
+      if (typeof codigo !== 'string' || codigo.trim().length === 0) {
+        throw new BadRequestException(
+          `serviciosCodigos[${index}] debe ser un código válido`,
+        );
+      }
+
+      return codigo.trim();
+    });
+
+    if (!VALID_PAYMENT_METHODS.includes(metodoPago as MetodoPago)) {
+      throw new BadRequestException(
+        'metodoPago debe ser efectivo, tarjeta, transferencia u otro',
+      );
+    }
+
+    return {
+      usuarioCodigo,
+      mascotaCodigo,
+      clienteCodigo,
+      fecha,
+      hora,
+      serviciosCodigos,
+      metodoPago: metodoPago as MetodoPago,
+    };
+  }
+
+  private requiredString(value: unknown, field: string): string {
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      throw new BadRequestException(`${field} es obligatorio`);
+    }
+
+    return value.trim();
+  }
+
+  private async findActiveServices(
+    runner: QueryRunner,
+    serviceCodes: string[],
+  ): Promise<AppointmentServiceResponse[]> {
+    const uniqueServiceCodes = [...new Set(serviceCodes)];
+    const result = await runner.query<ServiceRow>(
+      `
+        SELECT codigo, nombre, precio
+        FROM servicio
+        WHERE codigo = ANY($1::varchar[])
+          AND estado = 'activo'
+      `,
+      [uniqueServiceCodes],
+    );
+
+    const servicesByCode = new Map(
+      result.rows.map((service) => [service.codigo, service]),
+    );
+
+    const invalidServiceCode = uniqueServiceCodes.find(
+      (serviceCode) => !servicesByCode.has(serviceCode),
+    );
+
+    if (invalidServiceCode) {
+      throw new BadRequestException('Todos los servicios deben existir y estar activos');
+    }
+
+    return serviceCodes.map((serviceCode) => {
+      const service = servicesByCode.get(serviceCode);
+
+      return {
+        codigo: service.codigo,
+        nombre: service.nombre,
+        precioUnitario: Number(service.precio),
+      };
+    });
   }
 }
