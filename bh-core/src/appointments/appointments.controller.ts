@@ -1,10 +1,28 @@
-import { BadRequestException, Controller, Get, Query } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Post,
+  Query,
+} from '@nestjs/common';
 
-import { AppointmentsService } from './appointments.service';
+import {
+  AppointmentsService,
+  CreateAppointmentRequest,
+  CreatedAppointmentResponse,
+} from './appointments.service';
 
 @Controller('appointments')
 export class AppointmentsController {
   constructor(private readonly appointmentsService: AppointmentsService) {}
+
+  @Post()
+  async createConfirmedAppointment(
+    @Body() body: CreateAppointmentRequest,
+  ): Promise<CreatedAppointmentResponse> {
+    return this.appointmentsService.createConfirmedAppointment(body);
+  }
 
   @Get('availability')
   async validateAvailability(
