@@ -51,4 +51,32 @@ export class ClientesService {
       client.release();
     }
   }
+
+  async consultarClientes() {
+    const { rows } = await this.pool.query(
+      `SELECT c.codigo, u.nombre, u.apellido, u.telefono
+       FROM cliente c
+       JOIN usuario u ON c.usuario_codigo = u.codigo
+       ORDER BY u.nombre ASC`,
+    );
+
+    return rows;
+  }
+
+  async consultarClientesPorNombre(nombre: string) {
+    if (!nombre) {
+      throw new BadRequestException('El nombre es obligatorio');
+    }
+
+    const { rows } = await this.pool.query(
+      `SELECT c.codigo, u.nombre, u.apellido, u.telefono
+       FROM cliente c
+       JOIN usuario u ON c.usuario_codigo = u.codigo
+       WHERE u.nombre ILIKE '%' || $1 || '%'
+       ORDER BY u.nombre ASC`,
+      [nombre],
+    );
+
+    return rows;
+  }
 }
