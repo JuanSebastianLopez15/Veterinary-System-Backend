@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { ClientesService } from './clientes.service';
 
 @Controller('clientes')
@@ -22,6 +22,11 @@ export class ClientesController {
 
   @Get(':id')
   consultarClientePorId(@Param('id') id: string) {
-    return this.clientesService.consultarClientePorId(id);
+    return this.clientesService.consultarClientePorId(id.trim());// .trim elimina caracteres invisibles
+  }
+
+  @Patch(':id')
+  actualizarCliente(@Param('id') id: string, @Body() body: any) {
+    return this.clientesService.actualizarCliente(id.trim(), body);
   }
 }
