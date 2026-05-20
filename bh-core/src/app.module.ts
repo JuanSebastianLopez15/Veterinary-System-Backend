@@ -6,6 +6,7 @@ import { AppointmentsModule } from './appointments/appointments.module';
 import { DatabaseModule } from './database/database.module';
 import { MedicalHistoryModule } from './medical-history/medical-history.module';
 import { ClientesModule } from './clientes/clientes.module';
+import { HospitalizationModule } from './hospitalization/hospitalization.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { ClientesModule } from './clientes/clientes.module';
     AppointmentsModule,
     MedicalHistoryModule,
     ClientesModule,
+    HospitalizationModule,
   ],
   controllers: [],
   providers: [],
