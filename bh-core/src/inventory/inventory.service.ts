@@ -94,9 +94,12 @@ export class InventoryService {
     };
   }
 
-  async findLowStock() {
+  async findLowStock(category?: string) {
+    const values: unknown[] = [];
+    const categoryClause = category ? `AND tipo = $${values.push(category)}` : '';
     const result = await this.pool.query<Record<string, unknown>>(
-      'SELECT * FROM Producto WHERE stock < stock_minimo ORDER BY stock ASC',
+      `SELECT * FROM Producto WHERE stock < stock_minimo ${categoryClause} ORDER BY stock ASC`,
+      values,
     );
     const data = result.rows.map((r) => this.mapRow(r));
     return {
@@ -105,14 +108,17 @@ export class InventoryService {
     };
   }
 
-  async findExpiring(daysAhead = 30) {
+  async findExpiring(daysAhead = 30, category?: string) {
+    const values: unknown[] = [daysAhead];
+    const categoryClause = category ? `AND tipo = $${values.push(category)}` : '';
     const result = await this.pool.query<Record<string, unknown>>(
       `SELECT * FROM Producto
        WHERE fecha_vencimiento IS NOT NULL
          AND fecha_vencimiento >= CURRENT_DATE
          AND fecha_vencimiento <= CURRENT_DATE + ($1 || ' days')::INTERVAL
+         ${categoryClause}
        ORDER BY fecha_vencimiento ASC`,
-      [daysAhead],
+      values,
     );
     const data = result.rows.map((r) => this.mapRow(r));
     return {

@@ -57,13 +57,23 @@ export class InventoryController {
 
   // These static routes MUST be declared before `:id` to avoid NestJS routing conflicts
   @Get('low-stock')
-  async getLowStock() {
-    return this.inventoryService.findLowStock();
+  async getLowStock(@Query('category') category?: string) {
+    if (category && !VALID_CATEGORIES.includes(category)) {
+      throw new BadRequestException(
+        `category debe ser uno de: ${VALID_CATEGORIES.join(', ')}`,
+      );
+    }
+    return this.inventoryService.findLowStock(category);
   }
 
   @Get('expiring')
-  async getExpiring() {
-    return this.inventoryService.findExpiring();
+  async getExpiring(@Query('category') category?: string) {
+    if (category && !VALID_CATEGORIES.includes(category)) {
+      throw new BadRequestException(
+        `category debe ser uno de: ${VALID_CATEGORIES.join(', ')}`,
+      );
+    }
+    return this.inventoryService.findExpiring(30, category);
   }
 
   @Get()
