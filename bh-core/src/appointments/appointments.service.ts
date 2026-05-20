@@ -262,9 +262,13 @@ export class AppointmentsService {
       client.release();
     }
 
-    await this.auditService.notifyEvent({
-      eventType: 'CREACION_CITA',
-      payload: {
+    this.auditService.emit({
+      action: 'CREACION_CITA',
+      userId: request.usuarioCodigo,
+      userRole: 'veterinario',
+      entityType: 'Appointment',
+      entityId: createdAppointment.codigo,
+      details: {
         cita: {
           codigo: createdAppointment.codigo,
           usuarioCodigo: request.usuarioCodigo,
@@ -279,9 +283,13 @@ export class AppointmentsService {
       },
     });
 
-    await this.auditService.notifyEvent({
-      eventType: 'PAGO_CITA_REGISTRADO',
-      payload: {
+    this.auditService.emit({
+      action: 'PAGO_CITA_REGISTRADO',
+      userId: null,
+      userRole: null,
+      entityType: 'Payment',
+      entityId: createdAppointment.pago.codigo,
+      details: {
         citaCodigo: createdAppointment.codigo,
         pago: createdAppointment.pago,
       },
