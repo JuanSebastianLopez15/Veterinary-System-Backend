@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
 } from '@nestjs/common';
 import { Request } from 'express';
@@ -56,18 +57,33 @@ export class InventoryController {
 
   // These static routes MUST be declared before `:id` to avoid NestJS routing conflicts
   @Get('low-stock')
-  async getLowStock() {
-    return this.inventoryService.findLowStock();
+  async getLowStock(@Query('category') category?: string) {
+    if (category && !VALID_CATEGORIES.includes(category)) {
+      throw new BadRequestException(
+        `category debe ser uno de: ${VALID_CATEGORIES.join(', ')}`,
+      );
+    }
+    return this.inventoryService.findLowStock(category);
   }
 
   @Get('expiring')
-  async getExpiring() {
-    return this.inventoryService.findExpiring();
+  async getExpiring(@Query('category') category?: string) {
+    if (category && !VALID_CATEGORIES.includes(category)) {
+      throw new BadRequestException(
+        `category debe ser uno de: ${VALID_CATEGORIES.join(', ')}`,
+      );
+    }
+    return this.inventoryService.findExpiring(30, category);
   }
 
   @Get()
-  async findAll() {
-    return this.inventoryService.findAll();
+  async findAll(@Query('category') category?: string) {
+    if (category && !VALID_CATEGORIES.includes(category)) {
+      throw new BadRequestException(
+        `category debe ser uno de: ${VALID_CATEGORIES.join(', ')}`,
+      );
+    }
+    return this.inventoryService.findAll(category);
   }
 
   @Get(':id')

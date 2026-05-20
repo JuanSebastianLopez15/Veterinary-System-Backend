@@ -32,12 +32,25 @@ export class InventoryService {
 
   private mapRow(row: Record<string, unknown>) {
     const expirationDate = row.fecha_vencimiento as Date | null;
+    const stock = row.stock as number;
+    const minStock = row.stock_minimo as number;
+
+    let isNearExpiring = false;
+    if (expirationDate) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const limit = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
+      const expDate =
+        expirationDate instanceof Date ? expirationDate : new Date(String(expirationDate));
+      isNearExpiring = expDate >= today && expDate <= limit;
+    }
+
     return {
       id: row.codigo,
       name: row.nombre,
       category: row.tipo,
-      stock: row.stock,
-      minStock: row.stock_minimo,
+      stock,
+      minStock,
       price: typeof row.precio === 'string' ? parseFloat(row.precio) : row.precio,
       expirationDate: expirationDate
         ? expirationDate instanceof Date
@@ -45,6 +58,8 @@ export class InventoryService {
           : String(expirationDate).split('T')[0]
         : null,
       createdAt: row.creado_en ?? null,
+      isLowStock: stock < minStock,
+      isNearExpiring,
     };
   }
 
@@ -65,9 +80,12 @@ export class InventoryService {
     return this.mapRow(result.rows[0]);
   }
 
-  async findAll() {
+  async findAll(category?: string) {
+    const values: unknown[] = [];
+    const where = category ? `WHERE tipo = $${values.push(category)}` : '';
     const result = await this.pool.query<Record<string, unknown>>(
-      'SELECT * FROM Producto ORDER BY nombre ASC',
+      `SELECT * FROM Producto ${where} ORDER BY nombre ASC`,
+      values,
     );
     const data = result.rows.map((r) => this.mapRow(r));
     return {
@@ -76,9 +94,12 @@ export class InventoryService {
     };
   }
 
-  async findLowStock() {
+  async findLowStock(category?: string) {
+    const values: unknown[] = [];
+    const categoryClause = category ? `AND tipo = $${values.push(category)}` : '';
     const result = await this.pool.query<Record<string, unknown>>(
-      'SELECT * FROM Producto WHERE stock < stock_minimo ORDER BY stock ASC',
+      `SELECT * FROM Producto WHERE stock < stock_minimo ${categoryClause} ORDER BY stock ASC`,
+      values,
     );
     const data = result.rows.map((r) => this.mapRow(r));
     return {
@@ -87,14 +108,17 @@ export class InventoryService {
     };
   }
 
-  async findExpiring(daysAhead = 30) {
+  async findExpiring(daysAhead = 30, category?: string) {
+    const values: unknown[] = [daysAhead];
+    const categoryClause = category ? `AND tipo = $${values.push(category)}` : '';
     const result = await this.pool.query<Record<string, unknown>>(
       `SELECT * FROM Producto
        WHERE fecha_vencimiento IS NOT NULL
          AND fecha_vencimiento >= CURRENT_DATE
          AND fecha_vencimiento <= CURRENT_DATE + ($1 || ' days')::INTERVAL
+         ${categoryClause}
        ORDER BY fecha_vencimiento ASC`,
-      [daysAhead],
+      values,
     );
     const data = result.rows.map((r) => this.mapRow(r));
     return {
