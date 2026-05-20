@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import { Pool } from 'pg';
 
@@ -77,6 +78,17 @@ export interface DailyAgendaAppointmentResponse {
   servicios: AppointmentServiceResponse[];
 }
 
+export interface CompletedAppointmentResponse {
+  codigo: string;
+  usuarioCodigo: string;
+  mascotaCodigo: string;
+  clienteCodigo: string;
+  fecha: string;
+  hora: string;
+  estado: string;
+  total: number;
+}
+
 interface ValidatedAppointmentRequest {
   usuarioCodigo: string;
   mascotaCodigo: string;
@@ -143,6 +155,17 @@ interface DailyAgendaAppointmentRow {
   clienteCorreo: string;
   clienteCiudad: string;
   servicios: AppointmentServiceResponse[];
+}
+
+interface CompletedAppointmentRow {
+  codigo: string;
+  usuarioCodigo: string;
+  mascotaCodigo: string;
+  clienteCodigo: string;
+  fecha: string;
+  hora: string;
+  estado: string;
+  total: number | string;
 }
 
 const VALID_PAYMENT_METHODS: MetodoPago[] = [
@@ -417,6 +440,70 @@ export class AppointmentsService {
     });
   }
 
+  async completeAppointment(
+    codigo: string,
+    authenticatedUserCode: string | undefined,
+  ): Promise<CompletedAppointmentResponse> {
+    const appointmentCode = this.requiredString(codigo, 'codigo');
+    const userCode = this.requiredString(authenticatedUserCode, 'x-user-code');
+
+    const appointmentResult = await this.pool.query<CompletedAppointmentRow>(
+      `
+        SELECT
+          codigo,
+          usuario_codigo AS "usuarioCodigo",
+          mascota_codigo AS "mascotaCodigo",
+          cliente_codigo AS "clienteCodigo",
+          fecha::text AS fecha,
+          hora::text AS hora,
+          estado,
+          total
+        FROM cita
+        WHERE codigo = $1
+        LIMIT 1
+      `,
+      [appointmentCode],
+    );
+
+    if (appointmentResult.rowCount === 0) {
+      throw new NotFoundException('Cita no encontrada');
+    }
+
+    const appointment = appointmentResult.rows[0];
+
+    if (appointment.usuarioCodigo !== userCode) {
+      throw new ForbiddenException(
+        'Solo el veterinario asignado puede finalizar la cita',
+      );
+    }
+
+    if (appointment.estado === 'cancelada' || appointment.estado === 'completada') {
+      throw new ConflictException(
+        'No se puede finalizar una cita cancelada o completada',
+      );
+    }
+
+    const updatedResult = await this.pool.query<CompletedAppointmentRow>(
+      `
+        UPDATE cita
+        SET estado = 'completada'
+        WHERE codigo = $1
+        RETURNING
+          codigo,
+          usuario_codigo AS "usuarioCodigo",
+          mascota_codigo AS "mascotaCodigo",
+          cliente_codigo AS "clienteCodigo",
+          fecha::text AS fecha,
+          hora::text AS hora,
+          estado,
+          total
+      `,
+      [appointmentCode],
+    );
+
+    return this.toCompletedAppointmentResponse(updatedResult.rows[0]);
+  }
+
   async validateClientAppointmentRequest(
     authenticatedUserCode: string | undefined,
     body: CreateClientAppointmentRequest,
@@ -581,6 +668,21 @@ export class AppointmentsService {
     }
 
     return value.trim();
+  }
+
+  private toCompletedAppointmentResponse(
+    appointment: CompletedAppointmentRow,
+  ): CompletedAppointmentResponse {
+    return {
+      codigo: appointment.codigo,
+      usuarioCodigo: appointment.usuarioCodigo,
+      mascotaCodigo: appointment.mascotaCodigo,
+      clienteCodigo: appointment.clienteCodigo,
+      fecha: appointment.fecha,
+      hora: appointment.hora,
+      estado: appointment.estado,
+      total: Number(appointment.total),
+    };
   }
 
   private async findActiveServices(
