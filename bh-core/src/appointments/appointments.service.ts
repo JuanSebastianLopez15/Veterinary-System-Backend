@@ -52,6 +52,15 @@ export interface CreatedAppointmentResponse {
   pago: AppointmentPaymentResponse;
 }
 
+export interface DailyAgendaAppointmentResponse {
+  codigo: string;
+  fecha: string;
+  hora: string;
+  estado: string;
+  total: number;
+  servicios: AppointmentServiceResponse[];
+}
+
 interface ValidatedAppointmentRequest {
   usuarioCodigo: string;
   mascotaCodigo: string;
@@ -252,6 +261,13 @@ export class AppointmentsService {
     hora: string,
   ): Promise<boolean> {
     return this.isAvailableWithRunner(this.pool, usuarioCodigo, fecha, hora);
+  }
+
+  async findDailyAgenda(
+    veterinarioCodigo: string,
+    fecha: string,
+  ): Promise<DailyAgendaAppointmentResponse[]> {
+    return [];
   }
 
   async createClientAppointmentFromAccount(
