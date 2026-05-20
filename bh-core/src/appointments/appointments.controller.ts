@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   Post,
   Query,
 } from '@nestjs/common';
@@ -10,6 +11,7 @@ import {
 import {
   AppointmentsService,
   CreateAppointmentRequest,
+  CreateClientAppointmentRequest,
   CreatedAppointmentResponse,
 } from './appointments.service';
 
@@ -22,6 +24,17 @@ export class AppointmentsController {
     @Body() body: CreateAppointmentRequest,
   ): Promise<CreatedAppointmentResponse> {
     return this.appointmentsService.createConfirmedAppointment(body);
+  }
+
+  @Post('client')
+  async createClientAppointment(
+    @Headers('x-user-code') authenticatedUserCode: string | undefined,
+    @Body() body: CreateClientAppointmentRequest,
+  ): Promise<CreatedAppointmentResponse> {
+    return this.appointmentsService.createClientAppointmentFromAccount(
+      authenticatedUserCode,
+      body,
+    );
   }
 
   @Get('availability')

@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
 } from '@nestjs/common';
@@ -15,6 +16,15 @@ export interface CreateAppointmentRequest {
   usuarioCodigo?: string;
   mascotaCodigo?: string;
   clienteCodigo?: string;
+  fecha?: string;
+  hora?: string;
+  serviciosCodigos?: string[];
+  metodoPago?: string;
+}
+
+export interface CreateClientAppointmentRequest {
+  usuarioCodigo?: string;
+  mascotaCodigo?: string;
   fecha?: string;
   hora?: string;
   serviciosCodigos?: string[];
@@ -52,6 +62,17 @@ interface ValidatedAppointmentRequest {
   metodoPago: MetodoPago;
 }
 
+interface ValidatedClientAppointmentRequest {
+  authenticatedUserCode: string;
+  usuarioCodigo: string;
+  mascotaCodigo: string;
+  clienteCodigo: string;
+  fecha: string;
+  hora: string;
+  serviciosCodigos: string[];
+  metodoPago: MetodoPago;
+}
+
 interface QueryRunner {
   query<T = any>(
     query: string,
@@ -68,6 +89,10 @@ interface ServiceRow {
 interface AppointmentRow {
   codigo: string;
   estado: string;
+}
+
+interface ClientRow {
+  codigo: string;
 }
 
 interface PaymentRow {
@@ -227,6 +252,121 @@ export class AppointmentsService {
     hora: string,
   ): Promise<boolean> {
     return this.isAvailableWithRunner(this.pool, usuarioCodigo, fecha, hora);
+  }
+
+  async createClientAppointmentFromAccount(
+    authenticatedUserCode: string | undefined,
+    body: CreateClientAppointmentRequest,
+  ): Promise<CreatedAppointmentResponse> {
+    const request = await this.validateClientAppointmentRequest(
+      authenticatedUserCode,
+      body,
+    );
+
+    return this.createConfirmedAppointment({
+      usuarioCodigo: request.usuarioCodigo,
+      mascotaCodigo: request.mascotaCodigo,
+      clienteCodigo: request.clienteCodigo,
+      fecha: request.fecha,
+      hora: request.hora,
+      serviciosCodigos: request.serviciosCodigos,
+      metodoPago: request.metodoPago,
+    });
+  }
+
+  async validateClientAppointmentRequest(
+    authenticatedUserCode: string | undefined,
+    body: CreateClientAppointmentRequest,
+  ): Promise<ValidatedClientAppointmentRequest> {
+    const userCode = this.requiredString(authenticatedUserCode, 'x-user-code');
+
+    if (body && Object.prototype.hasOwnProperty.call(body, 'clienteCodigo')) {
+      throw new BadRequestException(
+        'clienteCodigo no debe enviarse en el cuerpo de la solicitud',
+      );
+    }
+
+    const usuarioCodigo = this.requiredString(body?.usuarioCodigo, 'usuarioCodigo');
+    const mascotaCodigo = this.requiredString(body?.mascotaCodigo, 'mascotaCodigo');
+    const fecha = this.requiredString(body?.fecha, 'fecha');
+    const hora = this.requiredString(body?.hora, 'hora');
+    const metodoPago = this.requiredString(body?.metodoPago, 'metodoPago');
+
+    if (!Array.isArray(body?.serviciosCodigos) || body.serviciosCodigos.length === 0) {
+      throw new BadRequestException('serviciosCodigos debe ser un arreglo no vacío');
+    }
+
+    const serviciosCodigos = body.serviciosCodigos.map((codigo, index) => {
+      if (typeof codigo !== 'string' || codigo.trim().length === 0) {
+        throw new BadRequestException(
+          `serviciosCodigos[${index}] debe ser un código válido`,
+        );
+      }
+
+      return codigo.trim();
+    });
+
+    if (!VALID_PAYMENT_METHODS.includes(metodoPago as MetodoPago)) {
+      throw new BadRequestException(
+        'metodoPago debe ser efectivo, tarjeta, transferencia u otro',
+      );
+    }
+
+    const clienteCodigo = await this.findClientCodeByUserCode(userCode);
+    await this.ensurePetBelongsToClient(mascotaCodigo, clienteCodigo);
+
+    return {
+      authenticatedUserCode: userCode,
+      usuarioCodigo,
+      mascotaCodigo,
+      clienteCodigo,
+      fecha,
+      hora,
+      serviciosCodigos,
+      metodoPago: metodoPago as MetodoPago,
+    };
+  }
+
+  private async findClientCodeByUserCode(userCode: string): Promise<string> {
+    const result = await this.pool.query<ClientRow>(
+      `
+        SELECT codigo
+        FROM cliente
+        WHERE usuario_codigo = $1
+        LIMIT 1
+      `,
+      [userCode],
+    );
+
+    if (result.rowCount === 0) {
+      throw new ForbiddenException(
+        'No existe un cliente asociado al usuario autenticado',
+      );
+    }
+
+    return result.rows[0].codigo;
+  }
+
+  private async ensurePetBelongsToClient(
+    mascotaCodigo: string,
+    clienteCodigo: string,
+  ): Promise<void> {
+    const result = await this.pool.query(
+      `
+        SELECT 1
+        FROM mascotas
+        WHERE codigo = $1
+          AND cliente_codigo = $2
+        LIMIT 1
+      `,
+      [mascotaCodigo, clienteCodigo],
+    );
+
+    if (result.rowCount === 0) {
+      throw new ForbiddenException(
+        'La mascota indicada no pertenece al cliente autenticado',
+      );
+    }
   }
 
   private async isAvailableWithRunner(
