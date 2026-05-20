@@ -2,6 +2,7 @@ import { Controller, Post, Body, Param, Headers, Patch, Get, Query } from '@nest
 import { MedicalHistoryService } from './medical-history.service';
 import { CreateMedicalHistoryDto } from './dto/create-medical-history.dto';
 import { EditMedicalHistoryDto } from './dto/edit-medical-history.dto';
+import { CreateVaccineDto } from './dto/create-vaccine.dto';
 
 @Controller('appointments')
 export class MedicalHistoryController {
@@ -36,5 +37,14 @@ export class MedicalHistoryController {
       throw new Error('Unauthorized');
     }
     return this.service.getUpcomingVaccines();
+  }
+
+  @Post('medical-history/:historialId/vaccines')
+  registerVaccine(
+    @Param('historialId') historialId: string,
+    @Headers('x-veterinario-codigo') veterinarianCode: string,
+    @Body() dto: CreateVaccineDto,
+  ) {
+    return this.service.registerVaccine(historialId, dto, veterinarianCode);
   }
 }

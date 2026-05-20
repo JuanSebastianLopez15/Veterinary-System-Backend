@@ -7,6 +7,7 @@ import { PrescribedMedication } from './entities/prescribed-medication.entity';
 import { Vaccine } from './entities/vaccine.entity';
 import { CreateMedicalHistoryDto } from './dto/create-medical-history.dto';
 import { EditMedicalHistoryDto } from './dto/edit-medical-history.dto';
+import { CreateVaccineDto } from './dto/create-vaccine.dto';
 import { AuditService } from '../audit/audit.service';
 
 @Injectable()
@@ -180,7 +181,7 @@ export class MedicalHistoryService {
     }
   }
   
-  async getUpcomingVaccines() {
+    async getUpcomingVaccines() {
     const thirtyDaysFromNow = new Date();
     thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
     
@@ -194,5 +195,44 @@ export class MedicalHistoryService {
     );
     
     return vaccines;
+  }
+
+  async registerVaccine(historialId: string, dto: CreateVaccineDto, veterinarianCode: string) {
+    // 1. Verificar que el historial existe con ese codigo
+    const historial = await this.historialRepo.findOne({ where: { codigo: historialId } });
+    if (!historial) {
+      throw new NotFoundException('Historial médico no encontrado');
+    }
+    
+    // 2. Verificar que el historial pertenece al veterinario autenticado
+    if (historial.veterinarioCodigo !== veterinarianCode) {
+      throw new ForbiddenException('No tienes permiso sobre este historial');
+    }
+    
+    // 3. Crear el registro en Vacuna
+    const vaccineCodigo = `VAC-${uuidv4()}`;
+    
+    const vaccine = this.vacunaRepo.create({
+      codigo: vaccineCodigo,
+      historialCodigo: historialId,
+      mascotaCodigo: historial.mascotaCodigo,
+      nombre: dto.nombre,
+      fecha: new Date(dto.fecha),
+      fechaSiguienteVacuna: dto.fechaSiguienteVacuna ? new Date(dto.fechaSiguienteVacuna) : null,
+    });
+    
+    await this.vacunaRepo.save(vaccine);
+    
+    // 4. Notificar a AuditService (fire-and-forget)
+    this.auditService.notifyEvent({
+      eventType: 'REGISTRO_VACUNA',
+      payload: {
+        usuarioCodigo: veterinarianCode,
+        rol: 'veterinario',
+        detalle: `Vacuna registrada en historial ${historialId}`,
+      },
+    }).catch(() => {});
+    
+    return { mensaje: 'Vacuna registrada exitosamente', codigo: vaccineCodigo };
   }
 }

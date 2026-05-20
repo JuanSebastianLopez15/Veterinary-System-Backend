@@ -1,7 +1,13 @@
-export interface CreateVaccineDto {
-  historial_codigo: string;
-  mascota_codigo: string;
+import { IsString, IsOptional, IsDateString } from 'class-validator';
+
+export class CreateVaccineDto {
+  @IsString()
   nombre: string;
+
+  @IsDateString()
   fecha: string;
-  fecha_siguiente_vacuna?: string;
+
+  @IsOptional()
+  @IsDateString()
+  fechaSiguienteVacuna?: string;
 }
