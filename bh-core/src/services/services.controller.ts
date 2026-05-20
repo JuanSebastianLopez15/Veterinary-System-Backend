@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
 } from '@nestjs/common';
 import { Request } from 'express';
@@ -41,8 +42,12 @@ export class ServicesController {
   }
 
   @Get()
-  async findAll() {
-    return this.servicesService.findAll();
+  async findAll(@Query('isActive') isActive?: string) {
+    if (isActive !== undefined && isActive !== 'true' && isActive !== 'false') {
+      throw new BadRequestException('isActive debe ser true o false');
+    }
+    const filter = isActive === undefined ? undefined : isActive === 'true';
+    return this.servicesService.findAll(filter);
   }
 
   @Get(':id')
