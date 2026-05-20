@@ -1,10 +1,42 @@
-import { BadRequestException, Controller, Get, Query } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Post,
+  Query,
+} from '@nestjs/common';
 
-import { AppointmentsService } from './appointments.service';
+import {
+  AppointmentsService,
+  CreateAppointmentRequest,
+  CreateClientAppointmentRequest,
+  CreatedAppointmentResponse,
+  DailyAgendaAppointmentResponse,
+} from './appointments.service';
 
 @Controller('appointments')
 export class AppointmentsController {
   constructor(private readonly appointmentsService: AppointmentsService) {}
+
+  @Post()
+  async createConfirmedAppointment(
+    @Body() body: CreateAppointmentRequest,
+  ): Promise<CreatedAppointmentResponse> {
+    return this.appointmentsService.createConfirmedAppointment(body);
+  }
+
+  @Post('client')
+  async createClientAppointment(
+    @Headers('x-user-code') authenticatedUserCode: string | undefined,
+    @Body() body: CreateClientAppointmentRequest,
+  ): Promise<CreatedAppointmentResponse> {
+    return this.appointmentsService.createClientAppointmentFromAccount(
+      authenticatedUserCode,
+      body,
+    );
+  }
 
   @Get('availability')
   async validateAvailability(
@@ -23,5 +55,17 @@ export class AppointmentsController {
     );
 
     return { disponible };
+  }
+
+  @Get('daily-agenda')
+  async findDailyAgenda(
+    @Query('veterinarioCodigo') veterinarioCodigo: string,
+    @Query('fecha') fecha: string,
+  ): Promise<DailyAgendaAppointmentResponse[]> {
+    if (!veterinarioCodigo || !fecha) {
+      throw new BadRequestException('veterinarioCodigo y fecha son obligatorios');
+    }
+
+    return this.appointmentsService.findDailyAgenda(veterinarioCodigo, fecha);
   }
 }

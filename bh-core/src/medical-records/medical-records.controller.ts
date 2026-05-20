@@ -16,7 +16,7 @@ export class MedicalRecordsController {
   async create(
     @Param('appointmentId') appointmentId: string,
     @Body() body: Record<string, unknown>,
-  ) {
+  ): Promise<unknown> {
     const { visitReason, diagnosis, treatment, petWeight, nextVisitDate, prescriptions, veterinarianId } = body;
 
     if (!visitReason || !diagnosis || !treatment || petWeight === undefined || !veterinarianId) {
