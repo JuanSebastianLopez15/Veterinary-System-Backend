@@ -5,6 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppointmentsModule } from './appointments/appointments.module';
 import { DatabaseModule } from './database/database.module';
 import { MedicalHistoryModule } from './medical-history/medical-history.module';
+import { ClientesModule } from './clientes/clientes.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { MedicalHistoryModule } from './medical-history/medical-history.module';
     DatabaseModule,
     AppointmentsModule,
     MedicalHistoryModule,
+    ClientesModule,
   ],
   controllers: [],
   providers: [],
