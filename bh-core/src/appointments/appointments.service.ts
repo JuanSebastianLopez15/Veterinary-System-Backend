@@ -501,7 +501,24 @@ export class AppointmentsService {
       [appointmentCode],
     );
 
-    return this.toCompletedAppointmentResponse(updatedResult.rows[0]);
+    const completedAppointment = this.toCompletedAppointmentResponse(
+      updatedResult.rows[0],
+    );
+
+    this.auditService.emit({
+      action: 'FINALIZACION_CITA',
+      userId: userCode,
+      userRole: 'veterinario',
+      entityType: 'Appointment',
+      entityId: completedAppointment.codigo,
+      details: {
+        estadoAnterior: appointment.estado,
+        estadoNuevo: completedAppointment.estado,
+        cita: completedAppointment,
+      },
+    });
+
+    return completedAppointment;
   }
 
   async validateClientAppointmentRequest(
