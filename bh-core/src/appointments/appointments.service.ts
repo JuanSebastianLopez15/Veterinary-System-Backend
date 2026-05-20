@@ -254,11 +254,38 @@ export class AppointmentsService {
     return this.isAvailableWithRunner(this.pool, usuarioCodigo, fecha, hora);
   }
 
+  async createClientAppointmentFromAccount(
+    authenticatedUserCode: string | undefined,
+    body: CreateClientAppointmentRequest,
+  ): Promise<CreatedAppointmentResponse> {
+    const request = await this.validateClientAppointmentRequest(
+      authenticatedUserCode,
+      body,
+    );
+
+    return this.createConfirmedAppointment({
+      usuarioCodigo: request.usuarioCodigo,
+      mascotaCodigo: request.mascotaCodigo,
+      clienteCodigo: request.clienteCodigo,
+      fecha: request.fecha,
+      hora: request.hora,
+      serviciosCodigos: request.serviciosCodigos,
+      metodoPago: request.metodoPago,
+    });
+  }
+
   async validateClientAppointmentRequest(
     authenticatedUserCode: string | undefined,
     body: CreateClientAppointmentRequest,
   ): Promise<ValidatedClientAppointmentRequest> {
     const userCode = this.requiredString(authenticatedUserCode, 'x-user-code');
+
+    if (body && Object.prototype.hasOwnProperty.call(body, 'clienteCodigo')) {
+      throw new BadRequestException(
+        'clienteCodigo no debe enviarse en el cuerpo de la solicitud',
+      );
+    }
+
     const usuarioCodigo = this.requiredString(body?.usuarioCodigo, 'usuarioCodigo');
     const mascotaCodigo = this.requiredString(body?.mascotaCodigo, 'mascotaCodigo');
     const fecha = this.requiredString(body?.fecha, 'fecha');

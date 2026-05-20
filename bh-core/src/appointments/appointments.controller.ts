@@ -30,8 +30,8 @@ export class AppointmentsController {
   async createClientAppointment(
     @Headers('x-user-code') authenticatedUserCode: string | undefined,
     @Body() body: CreateClientAppointmentRequest,
-  ): Promise<void> {
-    await this.appointmentsService.validateClientAppointmentRequest(
+  ): Promise<CreatedAppointmentResponse> {
+    return this.appointmentsService.createClientAppointmentFromAccount(
       authenticatedUserCode,
       body,
     );
