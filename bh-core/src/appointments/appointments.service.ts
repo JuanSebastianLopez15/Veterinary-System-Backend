@@ -53,9 +53,11 @@ export interface CreatedAppointmentResponse {
 }
 
 export interface DailyAgendaAppointmentResponse {
-  codigo: string;
-  fecha: string;
-  hora: string;
+  cita: {
+    codigo: string;
+    fecha: string;
+    hora: string;
+  };
   estado: string;
   total: number;
   mascota: {
@@ -358,9 +360,11 @@ export class AppointmentsService {
     );
 
     return result.rows.map((appointment) => ({
-      codigo: appointment.codigo,
-      fecha: appointment.fecha,
-      hora: appointment.hora,
+      cita: {
+        codigo: appointment.codigo,
+        fecha: appointment.fecha,
+        hora: appointment.hora,
+      },
       estado: appointment.estado,
       total: Number(appointment.total),
       mascota: {
