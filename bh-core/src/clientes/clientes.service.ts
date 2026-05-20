@@ -79,6 +79,7 @@ export class ClientesService {
 
     return rows;
   }
+
   async consultarClientePorId(id: string) {
     const { rows: [cliente] } = await this.pool.query(
       `SELECT c.codigo, u.nombre, u.apellido, u.correo, u.telefono, c.direccion, c.ciudad
@@ -102,4 +103,40 @@ export class ClientesService {
     return { ...cliente, mascotas };
   }
 
+  async actualizarCliente(id: string, body: any) {
+    const { nombre, apellido, correo, telefono, direccion, ciudad } = body;
+
+    const { rows: [cliente] } = await this.pool.query(
+      `SELECT c.codigo, c.usuario_codigo FROM cliente c WHERE c.codigo = $1`,
+      [id],
+    );
+
+    if (!cliente) {
+      throw new NotFoundException('Cliente no encontrado');
+    }
+
+    if (nombre || apellido || correo || telefono) {
+      await this.pool.query(
+        `UPDATE usuario SET
+          nombre   = COALESCE($1, nombre),
+          apellido = COALESCE($2, apellido),
+          correo   = COALESCE($3, correo),
+          telefono = COALESCE($4, telefono)
+         WHERE codigo = $5`,
+        [nombre ?? null, apellido ?? null, correo ?? null, telefono ?? null, cliente.usuario_codigo],
+      );
+    }
+
+    if (direccion || ciudad) {
+      await this.pool.query(
+        `UPDATE cliente SET
+          direccion = COALESCE($1, direccion),
+          ciudad    = COALESCE($2, ciudad)
+         WHERE codigo = $3`,
+        [direccion ?? null, ciudad ?? null, id],
+      );
+    }
+
+    return { mensaje: 'Cliente actualizado exitosamente' };
+  }
 }
