@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Pool } from 'pg';
 import { DATABASE_POOL } from '../database/database.provider';
 
@@ -79,4 +79,27 @@ export class ClientesService {
 
     return rows;
   }
+  async consultarClientePorId(id: string) {
+    const { rows: [cliente] } = await this.pool.query(
+      `SELECT c.codigo, u.nombre, u.apellido, u.correo, u.telefono, c.direccion, c.ciudad
+       FROM cliente c
+       JOIN usuario u ON c.usuario_codigo = u.codigo
+       WHERE c.codigo = $1`,
+      [id],
+    );
+
+    if (!cliente) {
+      throw new NotFoundException('Cliente no encontrado');
+    }
+
+    const { rows: mascotas } = await this.pool.query(
+      `SELECT codigo, nombre, estado
+       FROM mascotas
+       WHERE cliente_codigo = $1`,
+      [id],
+    );
+
+    return { ...cliente, mascotas };
+  }
+
 }
