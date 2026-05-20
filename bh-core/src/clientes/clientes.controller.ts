@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Param } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { ClientesService } from './clientes.service';
 
 @Controller('clientes')
@@ -18,5 +18,10 @@ export class ClientesController {
   @Get('buscar/:nombre')
   consultarClientesPorNombre(@Param('nombre') nombre: string) {
     return this.clientesService.consultarClientesPorNombre(nombre);
+  }
+
+  @Get(':id')
+  consultarClientePorId(@Param('id') id: string) {
+    return this.clientesService.consultarClientePorId(id);
   }
 }
