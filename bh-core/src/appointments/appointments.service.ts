@@ -21,6 +21,15 @@ export interface CreateAppointmentRequest {
   metodoPago?: string;
 }
 
+export interface CreateClientAppointmentRequest {
+  usuarioCodigo?: string;
+  mascotaCodigo?: string;
+  fecha?: string;
+  hora?: string;
+  serviciosCodigos?: string[];
+  metodoPago?: string;
+}
+
 export interface AppointmentServiceResponse {
   codigo: string;
   nombre: string;
@@ -46,6 +55,16 @@ interface ValidatedAppointmentRequest {
   usuarioCodigo: string;
   mascotaCodigo: string;
   clienteCodigo: string;
+  fecha: string;
+  hora: string;
+  serviciosCodigos: string[];
+  metodoPago: MetodoPago;
+}
+
+interface ValidatedClientAppointmentRequest {
+  authenticatedUserCode: string;
+  usuarioCodigo: string;
+  mascotaCodigo: string;
   fecha: string;
   hora: string;
   serviciosCodigos: string[];
@@ -227,6 +246,48 @@ export class AppointmentsService {
     hora: string,
   ): Promise<boolean> {
     return this.isAvailableWithRunner(this.pool, usuarioCodigo, fecha, hora);
+  }
+
+  validateClientAppointmentRequest(
+    authenticatedUserCode: string | undefined,
+    body: CreateClientAppointmentRequest,
+  ): ValidatedClientAppointmentRequest {
+    const userCode = this.requiredString(authenticatedUserCode, 'x-user-code');
+    const usuarioCodigo = this.requiredString(body?.usuarioCodigo, 'usuarioCodigo');
+    const mascotaCodigo = this.requiredString(body?.mascotaCodigo, 'mascotaCodigo');
+    const fecha = this.requiredString(body?.fecha, 'fecha');
+    const hora = this.requiredString(body?.hora, 'hora');
+    const metodoPago = this.requiredString(body?.metodoPago, 'metodoPago');
+
+    if (!Array.isArray(body?.serviciosCodigos) || body.serviciosCodigos.length === 0) {
+      throw new BadRequestException('serviciosCodigos debe ser un arreglo no vacío');
+    }
+
+    const serviciosCodigos = body.serviciosCodigos.map((codigo, index) => {
+      if (typeof codigo !== 'string' || codigo.trim().length === 0) {
+        throw new BadRequestException(
+          `serviciosCodigos[${index}] debe ser un código válido`,
+        );
+      }
+
+      return codigo.trim();
+    });
+
+    if (!VALID_PAYMENT_METHODS.includes(metodoPago as MetodoPago)) {
+      throw new BadRequestException(
+        'metodoPago debe ser efectivo, tarjeta, transferencia u otro',
+      );
+    }
+
+    return {
+      authenticatedUserCode: userCode,
+      usuarioCodigo,
+      mascotaCodigo,
+      fecha,
+      hora,
+      serviciosCodigos,
+      metodoPago: metodoPago as MetodoPago,
+    };
   }
 
   private async isAvailableWithRunner(
