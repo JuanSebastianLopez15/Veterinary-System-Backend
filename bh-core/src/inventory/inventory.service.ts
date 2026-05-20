@@ -32,12 +32,25 @@ export class InventoryService {
 
   private mapRow(row: Record<string, unknown>) {
     const expirationDate = row.fecha_vencimiento as Date | null;
+    const stock = row.stock as number;
+    const minStock = row.stock_minimo as number;
+
+    let isNearExpiring = false;
+    if (expirationDate) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const limit = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
+      const expDate =
+        expirationDate instanceof Date ? expirationDate : new Date(String(expirationDate));
+      isNearExpiring = expDate >= today && expDate <= limit;
+    }
+
     return {
       id: row.codigo,
       name: row.nombre,
       category: row.tipo,
-      stock: row.stock,
-      minStock: row.stock_minimo,
+      stock,
+      minStock,
       price: typeof row.precio === 'string' ? parseFloat(row.precio) : row.precio,
       expirationDate: expirationDate
         ? expirationDate instanceof Date
@@ -45,6 +58,8 @@ export class InventoryService {
           : String(expirationDate).split('T')[0]
         : null,
       createdAt: row.creado_en ?? null,
+      isLowStock: stock < minStock,
+      isNearExpiring,
     };
   }
 
