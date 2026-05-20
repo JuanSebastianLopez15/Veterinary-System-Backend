@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
 } from '@nestjs/common';
 import { Request } from 'express';
@@ -66,8 +67,13 @@ export class InventoryController {
   }
 
   @Get()
-  async findAll() {
-    return this.inventoryService.findAll();
+  async findAll(@Query('category') category?: string) {
+    if (category && !VALID_CATEGORIES.includes(category)) {
+      throw new BadRequestException(
+        `category debe ser uno de: ${VALID_CATEGORIES.join(', ')}`,
+      );
+    }
+    return this.inventoryService.findAll(category);
   }
 
   @Get(':id')

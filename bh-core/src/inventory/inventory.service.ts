@@ -80,9 +80,12 @@ export class InventoryService {
     return this.mapRow(result.rows[0]);
   }
 
-  async findAll() {
+  async findAll(category?: string) {
+    const values: unknown[] = [];
+    const where = category ? `WHERE tipo = $${values.push(category)}` : '';
     const result = await this.pool.query<Record<string, unknown>>(
-      'SELECT * FROM Producto ORDER BY nombre ASC',
+      `SELECT * FROM Producto ${where} ORDER BY nombre ASC`,
+      values,
     );
     const data = result.rows.map((r) => this.mapRow(r));
     return {
