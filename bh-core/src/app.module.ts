@@ -4,6 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AppointmentsModule } from './appointments/appointments.module';
 import { DatabaseModule } from './database/database.module';
 import { InventoryModule } from './inventory/inventory.module';
+import { MedicalRecordsModule } from './medical-records/medical-records.module';
 import { ServicesModule } from './services/services.module';
 
 @Module({
@@ -13,6 +14,7 @@ import { ServicesModule } from './services/services.module';
     AppointmentsModule,
     InventoryModule,
     ServicesModule,
+    MedicalRecordsModule,
   ],
   controllers: [],
   providers: [],
