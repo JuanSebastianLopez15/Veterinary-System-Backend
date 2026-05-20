@@ -58,6 +58,20 @@ export interface DailyAgendaAppointmentResponse {
   hora: string;
   estado: string;
   total: number;
+  mascota: {
+    codigo: string;
+    nombre: string;
+    especie: string;
+    raza: string;
+  };
+  cliente: {
+    codigo: string;
+    usuarioCodigo: string;
+    nombre: string;
+    apellido: string;
+    correo: string;
+    ciudad: string;
+  };
   servicios: AppointmentServiceResponse[];
 }
 
@@ -108,6 +122,25 @@ interface PaymentRow {
   codigo: string;
   metodoPago: MetodoPago;
   fecha: string;
+}
+
+interface DailyAgendaAppointmentRow {
+  codigo: string;
+  fecha: string;
+  hora: string;
+  estado: string;
+  total: number | string;
+  mascotaCodigo: string;
+  mascotaNombre: string;
+  mascotaEspecie: string;
+  mascotaRaza: string;
+  clienteCodigo: string;
+  clienteUsuarioCodigo: string;
+  clienteNombre: string;
+  clienteApellido: string;
+  clienteCorreo: string;
+  clienteCiudad: string;
+  servicios: AppointmentServiceResponse[];
 }
 
 const VALID_PAYMENT_METHODS: MetodoPago[] = [
@@ -267,7 +300,89 @@ export class AppointmentsService {
     veterinarioCodigo: string,
     fecha: string,
   ): Promise<DailyAgendaAppointmentResponse[]> {
-    return [];
+    const result = await this.pool.query<DailyAgendaAppointmentRow>(
+      `
+        SELECT
+          c.codigo,
+          c.fecha::text AS fecha,
+          c.hora::text AS hora,
+          c.estado,
+          c.total,
+          m.codigo AS "mascotaCodigo",
+          m.nombre AS "mascotaNombre",
+          m.especie AS "mascotaEspecie",
+          m.raza AS "mascotaRaza",
+          cl.codigo AS "clienteCodigo",
+          cl.usuario_codigo AS "clienteUsuarioCodigo",
+          cu.nombre AS "clienteNombre",
+          cu.apellido AS "clienteApellido",
+          cu.correo AS "clienteCorreo",
+          cl.ciudad AS "clienteCiudad",
+          COALESCE(
+            JSON_AGG(
+              JSON_BUILD_OBJECT(
+                'codigo', cs.servicio_codigo,
+                'nombre', cs.nombre,
+                'precioUnitario', cs.precio_unitario
+              )
+              ORDER BY cs.nombre
+            ) FILTER (WHERE cs.codigo IS NOT NULL),
+            '[]'::json
+          ) AS servicios
+        FROM cita c
+        INNER JOIN mascotas m ON m.codigo = c.mascota_codigo
+        INNER JOIN cliente cl ON cl.codigo = c.cliente_codigo
+        INNER JOIN usuario cu ON cu.codigo = cl.usuario_codigo
+        LEFT JOIN cita_servicios cs ON cs.cita_codigo = c.codigo
+        WHERE c.usuario_codigo = $1
+          AND c.fecha = $2::date
+        GROUP BY
+          c.codigo,
+          c.fecha,
+          c.hora,
+          c.estado,
+          c.total,
+          m.codigo,
+          m.nombre,
+          m.especie,
+          m.raza,
+          cl.codigo,
+          cl.usuario_codigo,
+          cu.nombre,
+          cu.apellido,
+          cu.correo,
+          cl.ciudad
+        ORDER BY c.hora ASC
+      `,
+      [veterinarioCodigo, fecha],
+    );
+
+    return result.rows.map((appointment) => ({
+      codigo: appointment.codigo,
+      fecha: appointment.fecha,
+      hora: appointment.hora,
+      estado: appointment.estado,
+      total: Number(appointment.total),
+      mascota: {
+        codigo: appointment.mascotaCodigo,
+        nombre: appointment.mascotaNombre,
+        especie: appointment.mascotaEspecie,
+        raza: appointment.mascotaRaza,
+      },
+      cliente: {
+        codigo: appointment.clienteCodigo,
+        usuarioCodigo: appointment.clienteUsuarioCodigo,
+        nombre: appointment.clienteNombre,
+        apellido: appointment.clienteApellido,
+        correo: appointment.clienteCorreo,
+        ciudad: appointment.clienteCiudad,
+      },
+      servicios: appointment.servicios.map((service) => ({
+        codigo: service.codigo,
+        nombre: service.nombre,
+        precioUnitario: Number(service.precioUnitario),
+      })),
+    }));
   }
 
   async createClientAppointmentFromAccount(
