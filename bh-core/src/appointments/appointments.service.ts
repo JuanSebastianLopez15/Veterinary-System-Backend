@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Pool } from 'pg';
 
+import { AuditService } from '../audit/audit.service';
 import { DATABASE_POOL } from '../database/database.provider';
 
 type MetodoPago = 'efectivo' | 'tarjeta' | 'transferencia' | 'otro';
@@ -84,13 +85,17 @@ const VALID_PAYMENT_METHODS: MetodoPago[] = [
 
 @Injectable()
 export class AppointmentsService {
-  constructor(@Inject(DATABASE_POOL) private readonly pool: Pool) {}
+  constructor(
+    @Inject(DATABASE_POOL) private readonly pool: Pool,
+    private readonly auditService: AuditService,
+  ) {}
 
   async createConfirmedAppointment(
     body: CreateAppointmentRequest,
   ): Promise<CreatedAppointmentResponse> {
     const request = this.validateCreateAppointmentRequest(body);
     const client = await this.pool.connect();
+    let createdAppointment: CreatedAppointmentResponse;
 
     try {
       await client.query('BEGIN');
@@ -165,11 +170,9 @@ export class AppointmentsService {
         [appointment.codigo, total, request.metodoPago],
       );
 
-      await client.query('COMMIT');
-
       const payment = paymentResult.rows[0];
 
-      return {
+      createdAppointment = {
         codigo: appointment.codigo,
         total,
         estado: appointment.estado,
@@ -181,12 +184,41 @@ export class AppointmentsService {
           fecha: payment.fecha,
         },
       };
+
+      await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
     } finally {
       client.release();
     }
+
+    await this.auditService.notifyEvent({
+      eventType: 'CREACION_CITA',
+      payload: {
+        cita: {
+          codigo: createdAppointment.codigo,
+          usuarioCodigo: request.usuarioCodigo,
+          mascotaCodigo: request.mascotaCodigo,
+          clienteCodigo: request.clienteCodigo,
+          fecha: request.fecha,
+          hora: request.hora,
+          estado: createdAppointment.estado,
+          total: createdAppointment.total,
+          servicios: createdAppointment.servicios,
+        },
+      },
+    });
+
+    await this.auditService.notifyEvent({
+      eventType: 'PAGO_CITA_REGISTRADO',
+      payload: {
+        citaCodigo: createdAppointment.codigo,
+        pago: createdAppointment.pago,
+      },
+    });
+
+    return createdAppointment;
   }
 
   async isAvailable(
