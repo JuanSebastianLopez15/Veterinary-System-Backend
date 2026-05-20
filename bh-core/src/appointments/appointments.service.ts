@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
 } from '@nestjs/common';
@@ -65,6 +66,7 @@ interface ValidatedClientAppointmentRequest {
   authenticatedUserCode: string;
   usuarioCodigo: string;
   mascotaCodigo: string;
+  clienteCodigo: string;
   fecha: string;
   hora: string;
   serviciosCodigos: string[];
@@ -87,6 +89,10 @@ interface ServiceRow {
 interface AppointmentRow {
   codigo: string;
   estado: string;
+}
+
+interface ClientRow {
+  codigo: string;
 }
 
 interface PaymentRow {
@@ -248,10 +254,10 @@ export class AppointmentsService {
     return this.isAvailableWithRunner(this.pool, usuarioCodigo, fecha, hora);
   }
 
-  validateClientAppointmentRequest(
+  async validateClientAppointmentRequest(
     authenticatedUserCode: string | undefined,
     body: CreateClientAppointmentRequest,
-  ): ValidatedClientAppointmentRequest {
+  ): Promise<ValidatedClientAppointmentRequest> {
     const userCode = this.requiredString(authenticatedUserCode, 'x-user-code');
     const usuarioCodigo = this.requiredString(body?.usuarioCodigo, 'usuarioCodigo');
     const mascotaCodigo = this.requiredString(body?.mascotaCodigo, 'mascotaCodigo');
@@ -279,15 +285,61 @@ export class AppointmentsService {
       );
     }
 
+    const clienteCodigo = await this.findClientCodeByUserCode(userCode);
+    await this.ensurePetBelongsToClient(mascotaCodigo, clienteCodigo);
+
     return {
       authenticatedUserCode: userCode,
       usuarioCodigo,
       mascotaCodigo,
+      clienteCodigo,
       fecha,
       hora,
       serviciosCodigos,
       metodoPago: metodoPago as MetodoPago,
     };
+  }
+
+  private async findClientCodeByUserCode(userCode: string): Promise<string> {
+    const result = await this.pool.query<ClientRow>(
+      `
+        SELECT codigo
+        FROM cliente
+        WHERE usuario_codigo = $1
+        LIMIT 1
+      `,
+      [userCode],
+    );
+
+    if (result.rowCount === 0) {
+      throw new ForbiddenException(
+        'No existe un cliente asociado al usuario autenticado',
+      );
+    }
+
+    return result.rows[0].codigo;
+  }
+
+  private async ensurePetBelongsToClient(
+    mascotaCodigo: string,
+    clienteCodigo: string,
+  ): Promise<void> {
+    const result = await this.pool.query(
+      `
+        SELECT 1
+        FROM mascotas
+        WHERE codigo = $1
+          AND cliente_codigo = $2
+        LIMIT 1
+      `,
+      [mascotaCodigo, clienteCodigo],
+    );
+
+    if (result.rowCount === 0) {
+      throw new ForbiddenException(
+        'La mascota indicada no pertenece al cliente autenticado',
+      );
+    }
   }
 
   private async isAvailableWithRunner(

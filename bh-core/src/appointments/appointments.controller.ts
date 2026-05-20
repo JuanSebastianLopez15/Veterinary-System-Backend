@@ -31,7 +31,7 @@ export class AppointmentsController {
     @Headers('x-user-code') authenticatedUserCode: string | undefined,
     @Body() body: CreateClientAppointmentRequest,
   ): Promise<void> {
-    this.appointmentsService.validateClientAppointmentRequest(
+    await this.appointmentsService.validateClientAppointmentRequest(
       authenticatedUserCode,
       body,
     );
