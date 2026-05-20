@@ -61,9 +61,19 @@ export class ServicesService {
     return created;
   }
 
-  async findAll() {
+  async findAll(isActive?: boolean) {
+    const values: unknown[] = [];
+    let where = '';
+
+    if (isActive === true) {
+      where = `WHERE estado = $${values.push('activo')}`;
+    } else if (isActive === false) {
+      where = `WHERE estado = $${values.push('inactivo')}`;
+    }
+
     const result = await this.pool.query<Record<string, unknown>>(
-      'SELECT * FROM Servicio ORDER BY nombre ASC',
+      `SELECT * FROM Servicio ${where} ORDER BY nombre ASC`,
+      values,
     );
     const data = result.rows.map((r) => this.mapRow(r));
     return {
