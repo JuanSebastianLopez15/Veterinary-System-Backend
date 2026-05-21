@@ -8,6 +8,7 @@ import { DatabaseModule } from './database/database.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { MedicalRecordsModule } from './medical-records/medical-records.module';
 import { ServicesModule } from './services/services.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { ServicesModule } from './services/services.module';
     InventoryModule,
     ServicesModule,
     MedicalRecordsModule,
+    UsersModule,
   ],
   controllers: [],
   providers: [],
