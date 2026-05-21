@@ -384,7 +384,8 @@ export class AuthService {
    * - Verifica que la cuenta este en estado activo
    * - Verifica la contrasena con bcrypt
    * - Genera un token JWT con el codigo, correo y rol del usuario
-   * - Emite evento de auditoria INICIO_DE_SESION_EXITOSO
+   * - Emite evento de auditoria INICIO_DE_SESION_EXITOSO si las credenciales son correctas
+   * - Emite evento de auditoria INTENTO_DE_SESION_FALLIDO si las credenciales son incorrectas
    *
    * @param body - { correo, contrasena }
    * @returns Token JWT y datos basicos del usuario
@@ -424,6 +425,15 @@ export class AuthService {
     );
 
     if (rows.length === 0) {
+      // Emitir evento de auditoria de intento fallido (usuario no existe)
+      this.auditService.emit({
+        action: 'INTENTO_DE_SESION_FALLIDO',
+        userId: null,
+        userRole: null,
+        entityType: 'Usuario',
+        entityId: null,
+        details: { correo: correo.toLowerCase(), motivo: 'Usuario no encontrado' },
+      });
       throw new UnauthorizedException('Credenciales incorrectas');
     }
 
@@ -449,6 +459,15 @@ export class AuthService {
     // Verificar contrasena con bcrypt
     const contrasenaValida = await bcrypt.compare(contrasena, usuario.contrasena);
     if (!contrasenaValida) {
+      // Emitir evento de auditoria de intento fallido (contrasena incorrecta)
+      this.auditService.emit({
+        action: 'INTENTO_DE_SESION_FALLIDO',
+        userId: usuario.codigo,
+        userRole: usuario.rol,
+        entityType: 'Usuario',
+        entityId: usuario.codigo,
+        details: { correo: usuario.correo, motivo: 'Contrasena incorrecta' },
+      });
       throw new UnauthorizedException('Credenciales incorrectas');
     }
 
