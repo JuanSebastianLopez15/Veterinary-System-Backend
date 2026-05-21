@@ -52,6 +52,97 @@ export class UsersService {
   }
 
   /**
+   * Rechaza la cuenta de un recepcionista o veterinario pendiente de aprobacion.
+   * - Valida que el ID tenga formato UUID valido
+   * - Valida que el motivo del rechazo sea obligatorio y sin espacios al inicio o final
+   * - Verifica que el usuario exista en la base de datos
+   * - Verifica que el usuario sea RECEPCIONISTA o VETERINARIO (no CLIENTE ni ADMIN)
+   * - Verifica que la cuenta este en estado pendiente_aprobacion
+   * - Actualiza el estado de la cuenta a rechazado
+   * - Emite evento de auditoria RECHAZO_DE_CUENTA
+   *
+   * @param id - Codigo UUID del usuario a rechazar
+   * @param body - { motivo }
+   * @returns Mensaje de exito y datos del usuario rechazado
+   */
+  async rejectUser(id: string, body: any) {
+    const { motivo } = body;
+
+    // Validacion de formato UUID
+    const regexUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!regexUUID.test(id)) {
+      throw new BadRequestException('El identificador del usuario no tiene un formato valido');
+    }
+
+    // Validacion del motivo de rechazo
+    if (!motivo) {
+      throw new BadRequestException('El motivo del rechazo es obligatorio');
+    }
+    if (typeof motivo !== 'string' || motivo.trim().length === 0) {
+      throw new BadRequestException('El motivo del rechazo no puede estar vacio');
+    }
+    if (motivo.trim().length < 10) {
+      throw new BadRequestException('El motivo del rechazo debe tener al menos 10 caracteres');
+    }
+    if (motivo.trim().length > 255) {
+      throw new BadRequestException('El motivo del rechazo no puede tener mas de 255 caracteres');
+    }
+
+    // Buscar usuario por codigo UUID
+    const { rows } = await this.pool.query(
+      `SELECT codigo, nombre, apellido, correo, rol, estado
+       FROM usuario WHERE codigo = $1 LIMIT 1`,
+      [id],
+    );
+
+    if (rows.length === 0) {
+      throw new NotFoundException('No existe un usuario con ese codigo');
+    }
+
+    const usuario = rows[0];
+
+    // Verificar que el rol sea RECEPCIONISTA o VETERINARIO
+    const rolesRechazables = ['RECEPCIONISTA', 'VETERINARIO'];
+    if (!rolesRechazables.includes(usuario.rol)) {
+      throw new BadRequestException(
+        'Solo se pueden rechazar cuentas de recepcionistas o veterinarios',
+      );
+    }
+
+    // Verificar que la cuenta este pendiente de aprobacion
+    if (usuario.estado !== 'pendiente_aprobacion') {
+      throw new BadRequestException(
+        `La cuenta no esta pendiente de aprobacion. Estado actual: ${usuario.estado}`,
+      );
+    }
+
+    // Rechazar la cuenta actualizando el estado a rechazado
+    await this.pool.query(
+      `UPDATE usuario SET estado = 'rechazado' WHERE codigo = $1`,
+      [id],
+    );
+
+    // Emitir evento de auditoria
+    this.auditService.emit({
+      action: 'RECHAZO_DE_CUENTA',
+      userId: usuario.codigo,
+      userRole: usuario.rol,
+      entityType: 'Usuario',
+      entityId: usuario.codigo,
+      details: { correo: usuario.correo, rol: usuario.rol, motivo: motivo.trim() },
+    });
+
+    return {
+      mensaje: `La cuenta de ${usuario.nombre} ${usuario.apellido} ha sido rechazada.`,
+      codigo: usuario.codigo,
+      correo: usuario.correo,
+      rol: usuario.rol,
+      estado: 'rechazado',
+      motivo: motivo.trim(),
+    };
+  }
+
+  /**
    * Aprueba la cuenta de un recepcionista o veterinario pendiente de aprobacion.
    * - Valida que el ID tenga formato UUID valido
    * - Verifica que el usuario exista en la base de datos

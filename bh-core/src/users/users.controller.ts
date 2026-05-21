@@ -1,4 +1,4 @@
-import { Controller, Get, HttpCode, HttpStatus, Param, Patch } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch } from '@nestjs/common';
 import { UsersService } from './users.service';
 
 /**
@@ -21,6 +21,21 @@ export class UsersController {
   @HttpCode(HttpStatus.OK)
   getPendingUsers() {
     return this.usersService.getPendingUsers();
+  }
+
+  /**
+   * Rechaza la cuenta de un recepcionista o veterinario pendiente de aprobacion.
+   * La cuenta debe estar en estado pendiente_aprobacion para poder rechazarse.
+   * El motivo del rechazo es obligatorio (entre 10 y 255 caracteres).
+   *
+   * PATCH /api/v1/users/:id/reject
+   * @param id - Codigo UUID del usuario a rechazar
+   * @param body - { motivo }
+   */
+  @Patch(':id/reject')
+  @HttpCode(HttpStatus.OK)
+  rejectUser(@Param('id') id: string, @Body() body: any) {
+    return this.usersService.rejectUser(id, body);
   }
 
   /**
