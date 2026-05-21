@@ -1,13 +1,17 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, UseGuards } from '@nestjs/common';
 import { UsersService } from './users.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 
 /**
  * Controlador de gestion de usuarios.
  * Expone los endpoints administrativos para aprobar, rechazar y suspender cuentas.
  * Ruta base: /api/v1/users
- * Nota: estos endpoints requieren rol ADMIN (proteccion JWT se agrega en SCRUM-91)
+ * Todos los endpoints requieren autenticacion JWT y rol ADMIN.
  */
 @Controller('users')
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
@@ -18,6 +22,7 @@ export class UsersController {
    * GET /api/v1/users/pending
    */
   @Get('pending')
+  @Roles('ADMIN')
   @HttpCode(HttpStatus.OK)
   getPendingUsers() {
     return this.usersService.getPendingUsers();
@@ -33,6 +38,7 @@ export class UsersController {
    * @param body - { motivo }
    */
   @Patch(':id/reject')
+  @Roles('ADMIN')
   @HttpCode(HttpStatus.OK)
   rejectUser(@Param('id') id: string, @Body() body: any) {
     return this.usersService.rejectUser(id, body);
@@ -46,6 +52,7 @@ export class UsersController {
    * @param id - Codigo UUID del usuario a aprobar
    */
   @Patch(':id/approve')
+  @Roles('ADMIN')
   @HttpCode(HttpStatus.OK)
   approveUser(@Param('id') id: string) {
     return this.usersService.approveUser(id);
