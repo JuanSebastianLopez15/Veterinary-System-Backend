@@ -4,12 +4,14 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { Pool } from 'pg';
 import * as bcrypt from 'bcrypt';
 import { DATABASE_POOL } from '../database/database.provider';
 import { AuditService } from '../audit/audit.service';
 import { MailService } from '../mail/mail.service';
+import { JwtService } from '@nestjs/jwt';
 import { formatColombiaDate } from '../common/date.util';
 
 /**
@@ -22,6 +24,7 @@ export class AuthService {
     @Inject(DATABASE_POOL) private readonly pool: Pool,
     private readonly auditService: AuditService,
     private readonly mailService: MailService,
+    private readonly jwtService: JwtService,
   ) {}
 
   /**
@@ -370,6 +373,110 @@ export class AuthService {
 
     return {
       mensaje: 'Se ha enviado un nuevo codigo de verificacion a tu correo. Expira en 15 minutos.',
+    };
+  }
+
+  /**
+   * Inicia sesion de un usuario con correo y contrasena.
+   * - Valida que correo y contrasena sean obligatorios y sin espacios
+   * - Valida formato de correo y longitud maxima de 70 caracteres
+   * - Busca el usuario por correo en la base de datos
+   * - Verifica que la cuenta este en estado activo
+   * - Verifica la contrasena con bcrypt
+   * - Genera un token JWT con el codigo, correo y rol del usuario
+   * - Emite evento de auditoria INICIO_DE_SESION_EXITOSO
+   *
+   * @param body - { correo, contrasena }
+   * @returns Token JWT y datos basicos del usuario
+   */
+  async login(body: any) {
+    const { correo, contrasena } = body;
+
+    // Validacion de campos obligatorios
+    if (!correo || !contrasena) {
+      throw new BadRequestException('El correo y la contrasena son obligatorios');
+    }
+
+    // Validacion: ningun campo puede contener espacios
+    if (/\s/.test(correo)) {
+      throw new BadRequestException('El correo no puede contener espacios');
+    }
+    if (/\s/.test(contrasena)) {
+      throw new BadRequestException('La contrasena no puede contener espacios');
+    }
+
+    // Validacion de formato de correo
+    const regexCorreo = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!regexCorreo.test(correo)) {
+      throw new BadRequestException('El correo debe tener un formato valido. Ejemplo: usuario@correo.com');
+    }
+
+    // Validacion de longitud maxima del correo
+    if (correo.length > 70) {
+      throw new BadRequestException('El correo no puede tener mas de 70 caracteres');
+    }
+
+    // Buscar usuario por correo
+    const { rows } = await this.pool.query(
+      `SELECT codigo, nombre, apellido, correo, contrasena, rol, estado
+       FROM usuario WHERE correo = $1 LIMIT 1`,
+      [correo.toLowerCase()],
+    );
+
+    if (rows.length === 0) {
+      throw new UnauthorizedException('Credenciales incorrectas');
+    }
+
+    const usuario = rows[0];
+
+    // Verificar estado de la cuenta antes de validar contrasena
+    if (usuario.estado === 'pendiente_verificacion') {
+      throw new UnauthorizedException('Debes verificar tu correo antes de iniciar sesion');
+    }
+    if (usuario.estado === 'pendiente_aprobacion') {
+      throw new UnauthorizedException('Tu cuenta esta pendiente de aprobacion por el administrador');
+    }
+    if (usuario.estado === 'rechazado') {
+      throw new UnauthorizedException('Tu cuenta ha sido rechazada. Contacta al administrador');
+    }
+    if (usuario.estado === 'suspendido') {
+      throw new UnauthorizedException('Tu cuenta esta suspendida. Contacta al administrador');
+    }
+    if (usuario.estado === 'inactivo') {
+      throw new UnauthorizedException('Tu cuenta esta inactiva. Contacta al administrador');
+    }
+
+    // Verificar contrasena con bcrypt
+    const contrasenaValida = await bcrypt.compare(contrasena, usuario.contrasena);
+    if (!contrasenaValida) {
+      throw new UnauthorizedException('Credenciales incorrectas');
+    }
+
+    // Generar token JWT con codigo, correo y rol
+    const payload = {
+      sub: usuario.codigo,
+      correo: usuario.correo,
+      rol: usuario.rol,
+    };
+    const token = this.jwtService.sign(payload);
+
+    // Emitir evento de auditoria
+    this.auditService.emit({
+      action: 'INICIO_DE_SESION_EXITOSO',
+      userId: usuario.codigo,
+      userRole: usuario.rol,
+      entityType: 'Usuario',
+      entityId: usuario.codigo,
+      details: { correo: usuario.correo, rol: usuario.rol },
+    });
+
+    return {
+      accessToken: token,
+      codigo: usuario.codigo,
+      nombre: usuario.nombre,
+      apellido: usuario.apellido,
+      correo: usuario.correo,
+      rol: usuario.rol,
     };
   }
 }
