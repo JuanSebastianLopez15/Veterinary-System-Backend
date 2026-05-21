@@ -182,7 +182,8 @@ export class AuthService {
    * - Verifica que haya un codigo activo en BD (caso defensivo)
    * - Verifica que el codigo coincida con el almacenado en BD
    * - Verifica que el codigo no haya expirado (expira a los 15 minutos)
-   * - Actualiza el estado del usuario a activo y limpia el codigo de verificacion
+   * - Actualiza el estado segun el rol: CLIENTE -> activo, RECEPCIONISTA/VETERINARIO -> pendiente_aprobacion
+   * - Limpia el codigo de verificacion de la BD
    * - Emite evento de auditoria VERIFICACION_CORREO
    *
    * @param body - { correo, codigo }
@@ -256,12 +257,19 @@ export class AuthService {
       throw new BadRequestException('El codigo de verificacion ha expirado. Registrate nuevamente para obtener uno nuevo');
     }
 
-    // Activar la cuenta y limpiar el codigo de verificacion de la BD
+    // Determinar nuevo estado segun el rol:
+    // CLIENTE -> activo, RECEPCIONISTA o VETERINARIO -> pendiente_aprobacion
+    const rolesConAprobacion = ['RECEPCIONISTA', 'VETERINARIO'];
+    const nuevoEstado = rolesConAprobacion.includes(usuario.rol)
+      ? 'pendiente_aprobacion'
+      : 'activo';
+
+    // Actualizar estado y limpiar el codigo de verificacion de la BD
     await this.pool.query(
       `UPDATE usuario
-       SET estado = 'activo', codigo_verificacion = NULL, codigo_verificacion_expira_en = NULL
-       WHERE correo = $1`,
-      [correo.toLowerCase()],
+       SET estado = $1, codigo_verificacion = NULL, codigo_verificacion_expira_en = NULL
+       WHERE correo = $2`,
+      [nuevoEstado, correo.toLowerCase()],
     );
 
     // Emitir evento de auditoria
@@ -271,8 +279,16 @@ export class AuthService {
       userRole: usuario.rol,
       entityType: 'Usuario',
       entityId: usuario.codigo,
-      details: { correo: usuario.correo },
+      details: { correo: usuario.correo, estado: nuevoEstado },
     });
+
+    // Respuesta segun el rol
+    if (nuevoEstado === 'pendiente_aprobacion') {
+      return {
+        mensaje: 'Correo verificado exitosamente. Tu cuenta esta pendiente de aprobacion por el administrador.',
+        estado: 'pendiente_aprobacion',
+      };
+    }
 
     return {
       mensaje: 'Correo verificado exitosamente. Tu cuenta esta activa.',
