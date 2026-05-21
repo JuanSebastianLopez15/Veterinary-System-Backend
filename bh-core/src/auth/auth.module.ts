@@ -6,6 +6,7 @@ import { AuthService } from './auth.service';
 import { DatabaseModule } from '../database/database.module';
 import { AuditModule } from '../audit/audit.module';
 import { MailModule } from '../mail/mail.module';
+import { JwtStrategy } from './strategies/jwt.strategy';
 
 /**
  * Modulo de autenticacion.
@@ -28,7 +29,7 @@ import { MailModule } from '../mail/mail.module';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService],
-  exports: [AuthService, JwtModule],
+  providers: [AuthService, JwtStrategy],
+  exports: [AuthService, JwtModule, JwtStrategy],
 })
 export class AuthModule {}
