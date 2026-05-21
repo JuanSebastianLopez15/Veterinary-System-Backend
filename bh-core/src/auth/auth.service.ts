@@ -3,6 +3,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import { Pool } from 'pg';
 import * as bcrypt from 'bcrypt';
@@ -12,7 +13,7 @@ import { MailService } from '../mail/mail.service';
 
 /**
  * Servicio de autenticacion.
- * Gestiona el registro de usuarios con verificacion de correo.
+ * Gestiona el registro de usuarios y la verificacion de correo.
  */
 @Injectable()
 export class AuthService {
@@ -168,6 +169,114 @@ export class AuthService {
       rol: usuario.rol,
       estado: usuario.estado,
       creadoEn: usuario.creado_en,
+    };
+  }
+
+  /**
+   * Verifica el codigo de verificacion ingresado por el usuario para activar su cuenta.
+   * - Valida que correo y codigo sean obligatorios y sin espacios
+   * - Valida formato de correo y longitud maxima de 70 caracteres
+   * - Valida que el codigo sea exactamente 6 digitos numericos
+   * - Busca el usuario por correo en la base de datos
+   * - Verifica que la cuenta no este activa, rechazada ni suspendida
+   * - Verifica que haya un codigo activo en BD (caso defensivo)
+   * - Verifica que el codigo coincida con el almacenado en BD
+   * - Verifica que el codigo no haya expirado (expira a los 15 minutos)
+   * - Actualiza el estado del usuario a activo y limpia el codigo de verificacion
+   * - Emite evento de auditoria VERIFICACION_CORREO
+   *
+   * @param body - { correo, codigo }
+   * @returns Mensaje de exito y estado de la cuenta
+   */
+  async verifyEmail(body: any) {
+    const { correo, codigo } = body;
+
+    // Validacion de campos obligatorios
+    if (!correo || !codigo) {
+      throw new BadRequestException('El correo y el codigo son obligatorios');
+    }
+
+    // Validacion: ningun campo puede contener espacios
+    if (/\s/.test(correo)) throw new BadRequestException('El correo no puede contener espacios');
+    if (/\s/.test(codigo)) throw new BadRequestException('El codigo no puede contener espacios');
+
+    // Validacion de formato de correo
+    const regexCorreo = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!regexCorreo.test(correo)) {
+      throw new BadRequestException('El correo debe tener un formato valido. Ejemplo: usuario@correo.com');
+    }
+
+    // Validacion de longitud maxima del correo
+    if (correo.length > 70) {
+      throw new BadRequestException('El correo no puede tener mas de 70 caracteres');
+    }
+
+    // Validacion del codigo: exactamente 6 digitos numericos
+    const regexCodigo = /^\d{6}$/;
+    if (!regexCodigo.test(codigo)) {
+      throw new BadRequestException('El codigo debe ser exactamente 6 digitos numericos');
+    }
+
+    // Buscar usuario por correo
+    const { rows } = await this.pool.query(
+      `SELECT codigo, correo, rol, estado, codigo_verificacion, codigo_verificacion_expira_en
+       FROM usuario WHERE correo = $1 LIMIT 1`,
+      [correo.toLowerCase()],
+    );
+
+    if (rows.length === 0) {
+      throw new NotFoundException('No existe un usuario con ese correo');
+    }
+
+    const usuario = rows[0];
+
+    // Verificar el estado actual de la cuenta
+    if (usuario.estado === 'activo') {
+      throw new BadRequestException('Esta cuenta ya fue verificada anteriormente');
+    }
+    if (usuario.estado === 'rechazado') {
+      throw new BadRequestException('Esta cuenta ha sido rechazada. Contacta al administrador');
+    }
+    if (usuario.estado === 'suspendido') {
+      throw new BadRequestException('Esta cuenta esta suspendida. Contacta al administrador');
+    }
+
+    // Verificar que el codigo no sea nulo en BD (caso defensivo)
+    if (!usuario.codigo_verificacion) {
+      throw new BadRequestException('No hay un codigo de verificacion activo para esta cuenta');
+    }
+
+    // Verificar que el codigo coincida con el almacenado en BD
+    if (usuario.codigo_verificacion !== codigo) {
+      throw new BadRequestException('El codigo de verificacion es incorrecto');
+    }
+
+    // Verificar que el codigo no haya expirado
+    if (new Date() > new Date(usuario.codigo_verificacion_expira_en)) {
+      throw new BadRequestException('El codigo de verificacion ha expirado. Registrate nuevamente para obtener uno nuevo');
+    }
+
+    // Activar la cuenta y limpiar el codigo de verificacion de la BD
+    await this.pool.query(
+      `UPDATE usuario
+       SET estado = 'activo', codigo_verificacion = NULL, codigo_verificacion_expira_en = NULL
+       WHERE correo = $1`,
+      [correo.toLowerCase()],
+    );
+
+    // Emitir evento de auditoria
+    this.auditService.emit({
+      action: 'VERIFICACION_CORREO',
+      userId: usuario.codigo,
+      userRole: usuario.rol,
+      entityType: 'Usuario',
+      entityId: usuario.codigo,
+      details: { correo: usuario.correo },
+    });
+
+    return {
+      mensaje: 'Correo verificado exitosamente. Tu cuenta esta activa.',
+      estado: 'activo',
     };
   }
 }
