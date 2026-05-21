@@ -7,6 +7,7 @@ import {
 import { Pool } from 'pg';
 import { DATABASE_POOL } from '../database/database.provider';
 import { AuditService } from '../audit/audit.service';
+import { formatColombiaDate } from '../common/date.util';
 
 /**
  * Servicio de gestion de usuarios.
@@ -20,7 +21,39 @@ export class UsersService {
   ) {}
 
   /**
+   * Retorna la lista de cuentas de recepcionistas y veterinarios pendientes de aprobacion.
+   * - Solo incluye usuarios con rol RECEPCIONISTA o VETERINARIO
+   * - Solo incluye usuarios con estado pendiente_aprobacion
+   * - Retorna nombre, apellido, correo, rol y fecha de solicitud de cada cuenta
+   * - Las fechas se muestran en hora Colombia (UTC-5)
+   *
+   * @returns Lista de cuentas pendientes de aprobacion
+   */
+  async getPendingUsers() {
+    const { rows } = await this.pool.query(
+      `SELECT codigo, nombre, apellido, correo, rol, creado_en
+       FROM usuario
+       WHERE estado = 'pendiente_aprobacion'
+         AND rol IN ('RECEPCIONISTA', 'VETERINARIO')
+       ORDER BY creado_en ASC`,
+    );
+
+    return {
+      total: rows.length,
+      usuarios: rows.map((u) => ({
+        codigo: u.codigo,
+        nombre: u.nombre,
+        apellido: u.apellido,
+        correo: u.correo,
+        rol: u.rol,
+        fechaSolicitud: formatColombiaDate(u.creado_en),
+      })),
+    };
+  }
+
+  /**
    * Aprueba la cuenta de un recepcionista o veterinario pendiente de aprobacion.
+   * - Valida que el ID tenga formato UUID valido
    * - Verifica que el usuario exista en la base de datos
    * - Verifica que el usuario sea RECEPCIONISTA o VETERINARIO (no CLIENTE ni ADMIN)
    * - Verifica que la cuenta este en estado pendiente_aprobacion
