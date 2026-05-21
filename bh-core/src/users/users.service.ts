@@ -52,6 +52,88 @@ export class UsersService {
   }
 
   /**
+   * Suspende la cuenta de un usuario activo.
+   * - Valida que el ID tenga formato UUID valido
+   * - Valida que el motivo de suspension sea obligatorio, minimo 10 y maximo 255 caracteres
+   * - Verifica que el usuario exista en la base de datos
+   * - Verifica que la cuenta este en estado activo
+   * - Actualiza el estado de la cuenta a suspendido
+   * - Emite evento de auditoria SUSPENSION_DE_USUARIO
+   *
+   * @param id - Codigo UUID del usuario a suspender
+   * @param body - { motivo }
+   * @returns Mensaje de exito y datos del usuario suspendido
+   */
+  async suspendUser(id: string, body: any) {
+    const { motivo } = body;
+
+    // Validacion de formato UUID
+    const regexUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!regexUUID.test(id)) {
+      throw new BadRequestException('El identificador del usuario no tiene un formato valido');
+    }
+
+    // Validacion del motivo de suspension
+    if (!motivo) {
+      throw new BadRequestException('El motivo de la suspension es obligatorio');
+    }
+    if (typeof motivo !== 'string' || motivo.trim().length === 0) {
+      throw new BadRequestException('El motivo de la suspension no puede estar vacio');
+    }
+    if (motivo.trim().length < 10) {
+      throw new BadRequestException('El motivo de la suspension debe tener al menos 10 caracteres');
+    }
+    if (motivo.trim().length > 255) {
+      throw new BadRequestException('El motivo de la suspension no puede tener mas de 255 caracteres');
+    }
+
+    // Buscar usuario por codigo UUID
+    const { rows } = await this.pool.query(
+      `SELECT codigo, nombre, apellido, correo, rol, estado
+       FROM usuario WHERE codigo = $1 LIMIT 1`,
+      [id],
+    );
+
+    if (rows.length === 0) {
+      throw new NotFoundException('No existe un usuario con ese codigo');
+    }
+
+    const usuario = rows[0];
+
+    // Verificar que la cuenta este activa
+    if (usuario.estado !== 'activo') {
+      throw new BadRequestException(
+        `Solo se pueden suspender cuentas activas. Estado actual: ${usuario.estado}`,
+      );
+    }
+
+    // Suspender la cuenta actualizando el estado a suspendido
+    await this.pool.query(
+      `UPDATE usuario SET estado = 'suspendido' WHERE codigo = $1`,
+      [id],
+    );
+
+    // Emitir evento de auditoria
+    this.auditService.emit({
+      action: 'SUSPENSION_DE_USUARIO',
+      userId: usuario.codigo,
+      userRole: usuario.rol,
+      entityType: 'Usuario',
+      entityId: usuario.codigo,
+      details: { correo: usuario.correo, rol: usuario.rol, motivo: motivo.trim() },
+    });
+
+    return {
+      mensaje: `La cuenta de ${usuario.nombre} ${usuario.apellido} ha sido suspendida.`,
+      codigo: usuario.codigo,
+      correo: usuario.correo,
+      rol: usuario.rol,
+      estado: 'suspendido',
+      motivo: motivo.trim(),
+    };
+  }
+
+  /**
    * Rechaza la cuenta de un recepcionista o veterinario pendiente de aprobacion.
    * - Valida que el ID tenga formato UUID valido
    * - Valida que el motivo del rechazo sea obligatorio y sin espacios al inicio o final

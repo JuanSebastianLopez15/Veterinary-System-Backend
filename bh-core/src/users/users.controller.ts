@@ -29,6 +29,22 @@ export class UsersController {
   }
 
   /**
+   * Suspende la cuenta de un usuario activo.
+   * La cuenta debe estar en estado activo para poder suspenderse.
+   * El motivo de la suspension es obligatorio (entre 10 y 255 caracteres).
+   *
+   * PATCH /api/v1/users/:id/suspend
+   * @param id - Codigo UUID del usuario a suspender
+   * @param body - { motivo }
+   */
+  @Patch(':id/suspend')
+  @Roles('ADMIN')
+  @HttpCode(HttpStatus.OK)
+  suspendUser(@Param('id') id: string, @Body() body: any) {
+    return this.usersService.suspendUser(id, body);
+  }
+
+  /**
    * Rechaza la cuenta de un recepcionista o veterinario pendiente de aprobacion.
    * La cuenta debe estar en estado pendiente_aprobacion para poder rechazarse.
    * El motivo del rechazo es obligatorio (entre 10 y 255 caracteres).
