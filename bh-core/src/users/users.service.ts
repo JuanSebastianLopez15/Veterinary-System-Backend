@@ -52,6 +52,77 @@ export class UsersService {
   }
 
   /**
+   * Retorna el listado completo de usuarios registrados en el sistema.
+   * - Permite filtrar por rol y/o estado de forma opcional
+   * - Valida que los filtros sean valores permitidos si se proporcionan
+   * - Retorna nombre, apellido, correo, rol, estado y fecha de registro de cada usuario
+   * - Las fechas se muestran en hora Colombia (UTC-5)
+   * - Ordena los resultados por fecha de registro descendente (mas recientes primero)
+   *
+   * @param rol - Filtro opcional por rol: ADMIN, CLIENTE, RECEPCIONISTA, VETERINARIO
+   * @param estado - Filtro opcional por estado: activo, inactivo, pendiente_verificacion, pendiente_aprobacion, rechazado, suspendido
+   * @returns Total de usuarios y lista con sus datos
+   */
+  async getAllUsers(rol?: string, estado?: string) {
+
+    // Validacion del filtro de rol si se proporciona
+    const rolesPermitidos = ['ADMIN', 'CLIENTE', 'RECEPCIONISTA', 'VETERINARIO'];
+    if (rol && !rolesPermitidos.includes(rol.toUpperCase())) {
+      throw new BadRequestException(
+        `Rol no valido. Use: ${rolesPermitidos.join(', ')}`,
+      );
+    }
+
+    // Validacion del filtro de estado si se proporciona
+    const estadosPermitidos = ['activo', 'inactivo', 'pendiente_verificacion', 'pendiente_aprobacion', 'rechazado', 'suspendido'];
+    if (estado && !estadosPermitidos.includes(estado.toLowerCase())) {
+      throw new BadRequestException(
+        `Estado no valido. Use: ${estadosPermitidos.join(', ')}`,
+      );
+    }
+
+    // Construir query dinamica con filtros opcionales
+    const condiciones: string[] = [];
+    const valores: string[] = [];
+    let indice = 1;
+
+    if (rol) {
+      condiciones.push(`rol = $${indice}`);
+      valores.push(rol.toUpperCase());
+      indice++;
+    }
+
+    if (estado) {
+      condiciones.push(`estado = $${indice}`);
+      valores.push(estado.toLowerCase());
+      indice++;
+    }
+
+    const whereClause = condiciones.length > 0 ? `WHERE ${condiciones.join(' AND ')}` : '';
+
+    const { rows } = await this.pool.query(
+      `SELECT codigo, nombre, apellido, correo, rol, estado, creado_en
+       FROM usuario
+       ${whereClause}
+       ORDER BY creado_en DESC`,
+      valores,
+    );
+
+    return {
+      total: rows.length,
+      usuarios: rows.map((u) => ({
+        codigo: u.codigo,
+        nombre: u.nombre,
+        apellido: u.apellido,
+        correo: u.correo,
+        rol: u.rol,
+        estado: u.estado,
+        creadoEn: formatColombiaDate(u.creado_en),
+      })),
+    };
+  }
+
+  /**
    * Suspende la cuenta de un usuario activo.
    * - Valida que el ID tenga formato UUID valido
    * - Valida que el motivo de suspension sea obligatorio, minimo 10 y maximo 255 caracteres
