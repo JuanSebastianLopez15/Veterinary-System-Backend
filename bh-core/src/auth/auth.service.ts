@@ -279,4 +279,80 @@ export class AuthService {
       estado: 'activo',
     };
   }
+
+  /**
+   * Reenvía un nuevo codigo de verificacion al correo del usuario.
+   * - Valida que el correo sea obligatorio, sin espacios y con formato valido
+   * - Verifica que el usuario exista y este en estado pendiente_verificacion
+   * - Genera un nuevo codigo de 6 digitos con nueva expiracion de 15 minutos
+   * - Actualiza el codigo en BD y envia el correo
+   * - No emite auditoria (accion de soporte, no de negocio)
+   *
+   * @param body - { correo }
+   * @returns Mensaje de confirmacion de reenvio
+   */
+  async resendVerification(body: any) {
+    const { correo } = body;
+
+    // Validacion de campo obligatorio
+    if (!correo) {
+      throw new BadRequestException('El correo es obligatorio');
+    }
+
+    // Validacion: no puede contener espacios
+    if (/\s/.test(correo)) {
+      throw new BadRequestException('El correo no puede contener espacios');
+    }
+
+    // Validacion de formato de correo
+    const regexCorreo = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!regexCorreo.test(correo)) {
+      throw new BadRequestException('El correo debe tener un formato valido. Ejemplo: usuario@correo.com');
+    }
+
+    // Validacion de longitud maxima del correo
+    if (correo.length > 70) {
+      throw new BadRequestException('El correo no puede tener mas de 70 caracteres');
+    }
+
+    // Buscar usuario por correo
+    const { rows } = await this.pool.query(
+      `SELECT codigo, correo, rol, estado FROM usuario WHERE correo = $1 LIMIT 1`,
+      [correo.toLowerCase()],
+    );
+
+    if (rows.length === 0) {
+      throw new NotFoundException('No existe un usuario con ese correo');
+    }
+
+    const usuario = rows[0];
+
+    // Solo se puede reenviar si la cuenta esta pendiente de verificacion
+    if (usuario.estado !== 'pendiente_verificacion') {
+      throw new BadRequestException('Solo se puede reenviar el codigo a cuentas pendientes de verificacion');
+    }
+
+    // Generar nuevo codigo de 6 digitos con nueva expiracion de 15 minutos
+    const nuevoCodigo = Math.floor(100000 + Math.random() * 900000).toString();
+    const nuevaExpiracion = new Date(Date.now() + 15 * 60 * 1000);
+
+    // Actualizar el codigo en BD
+    await this.pool.query(
+      `UPDATE usuario
+       SET codigo_verificacion = $1, codigo_verificacion_expira_en = $2
+       WHERE correo = $3`,
+      [nuevoCodigo, nuevaExpiracion, correo.toLowerCase()],
+    );
+
+    // Enviar nuevo correo con el codigo (no bloquea si falla)
+    try {
+      await this.mailService.sendVerificationCode(usuario.correo, nuevoCodigo);
+    } catch {
+      console.error(`No se pudo reenviar el correo de verificacion a ${usuario.correo}`);
+    }
+
+    return {
+      mensaje: 'Se ha enviado un nuevo codigo de verificacion a tu correo. Expira en 15 minutos.',
+    };
+  }
 }

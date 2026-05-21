@@ -37,4 +37,18 @@ export class AuthController {
   verifyEmail(@Body() body: any) {
     return this.authService.verifyEmail(body);
   }
+
+  /**
+   * Reenvía un nuevo codigo de verificacion al correo del usuario.
+   * Solo disponible para cuentas en estado pendiente_verificacion.
+   * Genera un nuevo codigo de 6 digitos con expiracion de 15 minutos.
+   *
+   * POST /api/v1/auth/resend-verification
+   * @param body - { correo }
+   */
+  @Post('resend-verification')
+  @HttpCode(HttpStatus.OK)
+  resendVerification(@Body() body: any) {
+    return this.authService.resendVerification(body);
+  }
 }
