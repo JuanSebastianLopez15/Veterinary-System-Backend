@@ -2,14 +2,12 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
-  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Pool } from 'pg';
 
 import { AuditService } from '../audit/audit.service';
-import { DATABASE_POOL } from '../database/database.provider';
+import { PrismaService } from '../database/prisma.service';
 
 type MetodoPago = 'efectivo' | 'tarjeta' | 'transferencia' | 'otro';
 
@@ -110,64 +108,6 @@ interface ValidatedClientAppointmentRequest {
   metodoPago: MetodoPago;
 }
 
-interface QueryRunner {
-  query<T = any>(
-    query: string,
-    values?: unknown[],
-  ): Promise<{ rows: T[]; rowCount: number }>;
-}
-
-interface ServiceRow {
-  codigo: string;
-  nombre: string;
-  precio: number | string;
-}
-
-interface AppointmentRow {
-  codigo: string;
-  estado: string;
-}
-
-interface ClientRow {
-  codigo: string;
-}
-
-interface PaymentRow {
-  codigo: string;
-  metodoPago: MetodoPago;
-  fecha: string;
-}
-
-interface DailyAgendaAppointmentRow {
-  codigo: string;
-  fecha: string;
-  hora: string;
-  estado: string;
-  total: number | string;
-  mascotaCodigo: string;
-  mascotaNombre: string;
-  mascotaEspecie: string;
-  mascotaRaza: string;
-  clienteCodigo: string;
-  clienteUsuarioCodigo: string;
-  clienteNombre: string;
-  clienteApellido: string;
-  clienteCorreo: string;
-  clienteCiudad: string;
-  servicios: AppointmentServiceResponse[];
-}
-
-interface CompletedAppointmentRow {
-  codigo: string;
-  usuarioCodigo: string;
-  mascotaCodigo: string;
-  clienteCodigo: string;
-  fecha: string;
-  hora: string;
-  estado: string;
-  total: number | string;
-}
-
 const VALID_PAYMENT_METHODS: MetodoPago[] = [
   'efectivo',
   'tarjeta',
@@ -178,22 +118,23 @@ const VALID_PAYMENT_METHODS: MetodoPago[] = [
 @Injectable()
 export class AppointmentsService {
   constructor(
-    @Inject(DATABASE_POOL) private readonly pool: Pool,
+    private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
   ) {}
+
+  private parseTime(timeStr: string): Date {
+    return new Date(`1970-01-01T${timeStr}Z`);
+  }
 
   async createConfirmedAppointment(
     body: CreateAppointmentRequest,
   ): Promise<CreatedAppointmentResponse> {
     const request = this.validateCreateAppointmentRequest(body);
-    const client = await this.pool.connect();
     let createdAppointment: CreatedAppointmentResponse;
 
-    try {
-      await client.query('BEGIN');
-
+    await this.prisma.$transaction(async (tx) => {
       const available = await this.isAvailableWithRunner(
-        client,
+        tx,
         request.usuarioCodigo,
         request.fecha,
         request.hora,
@@ -205,64 +146,41 @@ export class AppointmentsService {
         );
       }
 
-      const services = await this.findActiveServices(client, request.serviciosCodigos);
+      const services = await this.findActiveServices(tx, request.serviciosCodigos);
       const total = Number(
         services
           .reduce((sum, service) => sum + service.precioUnitario, 0)
           .toFixed(2),
       );
 
-      const appointmentResult = await client.query<AppointmentRow>(
-        `
-          INSERT INTO cita (
-            usuario_codigo,
-            mascota_codigo,
-            cliente_codigo,
-            fecha,
-            hora,
-            estado,
-            total
-          )
-          VALUES ($1, $2, $3, $4::date, $5::time, 'confirmada', $6)
-          RETURNING codigo, estado
-        `,
-        [
-          request.usuarioCodigo,
-          request.mascotaCodigo,
-          request.clienteCodigo,
-          request.fecha,
-          request.hora,
+      const appointment = await tx.cita.create({
+        data: {
+          usuario_codigo: request.usuarioCodigo,
+          mascota_codigo: request.mascotaCodigo,
+          cliente_codigo: request.clienteCodigo,
+          fecha: new Date(request.fecha),
+          hora: this.parseTime(request.hora),
+          estado: 'confirmada',
           total,
-        ],
-      );
-
-      const appointment = appointmentResult.rows[0];
-
-      for (const service of services) {
-        await client.query(
-          `
-            INSERT INTO cita_servicios (
-              cita_codigo,
-              servicio_codigo,
-              nombre,
-              precio_unitario
-            )
-            VALUES ($1, $2, $3, $4)
-          `,
-          [appointment.codigo, service.codigo, service.nombre, service.precioUnitario],
-        );
-      }
-
-      const paymentResult = await client.query<PaymentRow>(
-        `
-          INSERT INTO pago (cita_codigo, monto, metodo_pago, fecha)
-          VALUES ($1, $2, $3, CURRENT_DATE)
-          RETURNING codigo, metodo_pago AS "metodoPago", fecha
-        `,
-        [appointment.codigo, total, request.metodoPago],
-      );
-
-      const payment = paymentResult.rows[0];
+          cita_servicios: {
+            create: services.map((s) => ({
+              servicio_codigo: s.codigo,
+              nombre: s.nombre,
+              precio_unitario: s.precioUnitario,
+            })),
+          },
+          pago: {
+            create: {
+              monto: total,
+              metodo_pago: request.metodoPago,
+              fecha: new Date(),
+            },
+          },
+        },
+        include: {
+          pago: true,
+        },
+      });
 
       createdAppointment = {
         codigo: appointment.codigo,
@@ -270,38 +188,31 @@ export class AppointmentsService {
         estado: appointment.estado,
         servicios: services,
         pago: {
-          codigo: payment.codigo,
+          codigo: appointment.pago!.codigo,
           monto: total,
-          metodoPago: payment.metodoPago,
-          fecha: payment.fecha,
+          metodoPago: appointment.pago!.metodo_pago as MetodoPago,
+          fecha: appointment.pago!.fecha.toISOString().split('T')[0],
         },
       };
-
-      await client.query('COMMIT');
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+    });
 
     this.auditService.emit({
       action: 'CREACION_CITA',
       userId: request.usuarioCodigo,
       userRole: 'veterinario',
       entityType: 'Appointment',
-      entityId: createdAppointment.codigo,
+      entityId: createdAppointment!.codigo,
       details: {
         cita: {
-          codigo: createdAppointment.codigo,
+          codigo: createdAppointment!.codigo,
           usuarioCodigo: request.usuarioCodigo,
           mascotaCodigo: request.mascotaCodigo,
           clienteCodigo: request.clienteCodigo,
           fecha: request.fecha,
           hora: request.hora,
-          estado: createdAppointment.estado,
-          total: createdAppointment.total,
-          servicios: createdAppointment.servicios,
+          estado: createdAppointment!.estado,
+          total: createdAppointment!.total,
+          servicios: createdAppointment!.servicios,
         },
       },
     });
@@ -311,14 +222,14 @@ export class AppointmentsService {
       userId: null,
       userRole: null,
       entityType: 'Payment',
-      entityId: createdAppointment.pago.codigo,
+      entityId: createdAppointment!.pago.codigo,
       details: {
-        citaCodigo: createdAppointment.codigo,
-        pago: createdAppointment.pago,
+        citaCodigo: createdAppointment!.codigo,
+        pago: createdAppointment!.pago,
       },
     });
 
-    return createdAppointment;
+    return createdAppointment!;
   }
 
   async isAvailable(
@@ -326,98 +237,67 @@ export class AppointmentsService {
     fecha: string,
     hora: string,
   ): Promise<boolean> {
-    return this.isAvailableWithRunner(this.pool, usuarioCodigo, fecha, hora);
+    return this.isAvailableWithRunner(this.prisma, usuarioCodigo, fecha, hora);
   }
 
   async findDailyAgenda(
     veterinarioCodigo: string,
     fecha: string,
   ): Promise<DailyAgendaAppointmentResponse[]> {
-    const result = await this.pool.query<DailyAgendaAppointmentRow>(
-      `
-        SELECT
-          c.codigo,
-          c.fecha::text AS fecha,
-          c.hora::text AS hora,
-          c.estado,
-          c.total,
-          m.codigo AS "mascotaCodigo",
-          m.nombre AS "mascotaNombre",
-          m.especie AS "mascotaEspecie",
-          m.raza AS "mascotaRaza",
-          cl.codigo AS "clienteCodigo",
-          cl.usuario_codigo AS "clienteUsuarioCodigo",
-          cu.nombre AS "clienteNombre",
-          cu.apellido AS "clienteApellido",
-          cu.correo AS "clienteCorreo",
-          cl.ciudad AS "clienteCiudad",
-          COALESCE(
-            JSON_AGG(
-              JSON_BUILD_OBJECT(
-                'codigo', cs.servicio_codigo,
-                'nombre', cs.nombre,
-                'precioUnitario', cs.precio_unitario
-              )
-              ORDER BY cs.nombre
-            ) FILTER (WHERE cs.codigo IS NOT NULL),
-            '[]'::json
-          ) AS servicios
-        FROM cita c
-        INNER JOIN mascotas m ON m.codigo = c.mascota_codigo
-        INNER JOIN cliente cl ON cl.codigo = c.cliente_codigo
-        INNER JOIN usuario cu ON cu.codigo = cl.usuario_codigo
-        LEFT JOIN cita_servicios cs ON cs.cita_codigo = c.codigo
-        WHERE c.usuario_codigo = $1
-          AND c.fecha = $2::date
-        GROUP BY
-          c.codigo,
-          c.fecha,
-          c.hora,
-          c.estado,
-          c.total,
-          m.codigo,
-          m.nombre,
-          m.especie,
-          m.raza,
-          cl.codigo,
-          cl.usuario_codigo,
-          cu.nombre,
-          cu.apellido,
-          cu.correo,
-          cl.ciudad
-        ORDER BY c.hora ASC
-      `,
-      [veterinarioCodigo, fecha],
-    );
+    const citas = await this.prisma.cita.findMany({
+      where: {
+        usuario_codigo: veterinarioCodigo,
+        fecha: new Date(fecha),
+      },
+      include: {
+        mascota: true,
+        cliente: {
+          include: {
+            usuario: true,
+          },
+        },
+        cita_servicios: {
+          orderBy: { nombre: 'asc' },
+        },
+      },
+      orderBy: {
+        hora: 'asc',
+      },
+    });
 
-    return result.rows.map((appointment) => ({
-      cita: {
-        codigo: appointment.codigo,
-        fecha: appointment.fecha,
-        hora: appointment.hora,
-      },
-      estado: appointment.estado,
-      total: Number(appointment.total),
-      mascota: {
-        codigo: appointment.mascotaCodigo,
-        nombre: appointment.mascotaNombre,
-        especie: appointment.mascotaEspecie,
-        raza: appointment.mascotaRaza,
-      },
-      cliente: {
-        codigo: appointment.clienteCodigo,
-        usuarioCodigo: appointment.clienteUsuarioCodigo,
-        nombre: appointment.clienteNombre,
-        apellido: appointment.clienteApellido,
-        correo: appointment.clienteCorreo,
-        ciudad: appointment.clienteCiudad,
-      },
-      servicios: appointment.servicios.map((service) => ({
-        codigo: service.codigo,
-        nombre: service.nombre,
-        precioUnitario: Number(service.precioUnitario),
-      })),
-    }));
+    return citas.map((c) => {
+      const horaStr = c.hora.toISOString().split('T')[1].substring(0, 8);
+      const fechaStr = c.fecha.toISOString().split('T')[0];
+
+      return {
+        cita: {
+          codigo: c.codigo,
+          fecha: fechaStr,
+          hora: horaStr,
+        },
+        estado: c.estado,
+        total: Number(c.total),
+        mascota: {
+          codigo: c.mascota.codigo,
+          nombre: c.mascota.nombre,
+          especie: c.mascota.especie,
+          raza: c.mascota.raza,
+        },
+        cliente: {
+          codigo: c.cliente.codigo,
+          usuarioCodigo: c.cliente.usuario_codigo,
+          nombre: c.cliente.usuario.nombre,
+          apellido: c.cliente.usuario.apellido,
+          correo: c.cliente.usuario.correo,
+          ciudad: c.cliente.ciudad,
+        },
+        servicios: c.cita_servicios.map((s) => ({
+          codigo: s.servicio_codigo,
+          nombre: s.nombre,
+          precioUnitario: Number(s.precio_unitario),
+        })),
+      };
+    });
   }
 
   async createClientAppointmentFromAccount(
@@ -447,31 +327,15 @@ export class AppointmentsService {
     const appointmentCode = this.requiredString(codigo, 'codigo');
     const userCode = this.requiredString(authenticatedUserCode, 'x-user-code');
 
-    const appointmentResult = await this.pool.query<CompletedAppointmentRow>(
-      `
-        SELECT
-          codigo,
-          usuario_codigo AS "usuarioCodigo",
-          mascota_codigo AS "mascotaCodigo",
-          cliente_codigo AS "clienteCodigo",
-          fecha::text AS fecha,
-          hora::text AS hora,
-          estado,
-          total
-        FROM cita
-        WHERE codigo = $1
-        LIMIT 1
-      `,
-      [appointmentCode],
-    );
+    const appointment = await this.prisma.cita.findUnique({
+      where: { codigo: appointmentCode },
+    });
 
-    if (appointmentResult.rowCount === 0) {
+    if (!appointment) {
       throw new NotFoundException('Cita no encontrada');
     }
 
-    const appointment = appointmentResult.rows[0];
-
-    if (appointment.usuarioCodigo !== userCode) {
+    if (appointment.usuario_codigo !== userCode) {
       throw new ForbiddenException(
         'Solo el veterinario asignado puede finalizar la cita',
       );
@@ -483,27 +347,21 @@ export class AppointmentsService {
       );
     }
 
-    const updatedResult = await this.pool.query<CompletedAppointmentRow>(
-      `
-        UPDATE cita
-        SET estado = 'completada'
-        WHERE codigo = $1
-        RETURNING
-          codigo,
-          usuario_codigo AS "usuarioCodigo",
-          mascota_codigo AS "mascotaCodigo",
-          cliente_codigo AS "clienteCodigo",
-          fecha::text AS fecha,
-          hora::text AS hora,
-          estado,
-          total
-      `,
-      [appointmentCode],
-    );
+    const updated = await this.prisma.cita.update({
+      where: { codigo: appointmentCode },
+      data: { estado: 'completada' },
+    });
 
-    const completedAppointment = this.toCompletedAppointmentResponse(
-      updatedResult.rows[0],
-    );
+    const completedAppointment: CompletedAppointmentResponse = {
+      codigo: updated.codigo,
+      usuarioCodigo: updated.usuario_codigo,
+      mascotaCodigo: updated.mascota_codigo,
+      clienteCodigo: updated.cliente_codigo,
+      fecha: updated.fecha.toISOString().split('T')[0],
+      hora: updated.hora.toISOString().split('T')[1].substring(0, 8),
+      estado: updated.estado,
+      total: Number(updated.total),
+    };
 
     this.auditService.emit({
       action: 'FINALIZACION_CITA',
@@ -575,41 +433,32 @@ export class AppointmentsService {
   }
 
   private async findClientCodeByUserCode(userCode: string): Promise<string> {
-    const result = await this.pool.query<ClientRow>(
-      `
-        SELECT codigo
-        FROM cliente
-        WHERE usuario_codigo = $1
-        LIMIT 1
-      `,
-      [userCode],
-    );
+    const cliente = await this.prisma.cliente.findUnique({
+      where: { usuario_codigo: userCode },
+      select: { codigo: true },
+    });
 
-    if (result.rowCount === 0) {
+    if (!cliente) {
       throw new ForbiddenException(
         'No existe un cliente asociado al usuario autenticado',
       );
     }
 
-    return result.rows[0].codigo;
+    return cliente.codigo;
   }
 
   private async ensurePetBelongsToClient(
     mascotaCodigo: string,
     clienteCodigo: string,
   ): Promise<void> {
-    const result = await this.pool.query(
-      `
-        SELECT 1
-        FROM mascotas
-        WHERE codigo = $1
-          AND cliente_codigo = $2
-        LIMIT 1
-      `,
-      [mascotaCodigo, clienteCodigo],
-    );
+    const mascota = await this.prisma.mascotas.findFirst({
+      where: {
+        codigo: mascotaCodigo,
+        cliente_codigo: clienteCodigo,
+      },
+    });
 
-    if (result.rowCount === 0) {
+    if (!mascota) {
       throw new ForbiddenException(
         'La mascota indicada no pertenece al cliente autenticado',
       );
@@ -617,25 +466,21 @@ export class AppointmentsService {
   }
 
   private async isAvailableWithRunner(
-    runner: QueryRunner,
+    runner: any,
     usuarioCodigo: string,
     fecha: string,
     hora: string,
   ): Promise<boolean> {
-    const result = await runner.query(
-      `
-        SELECT 1
-        FROM cita
-        WHERE usuario_codigo = $1
-          AND fecha = $2::date
-          AND hora = $3::time
-          AND estado <> 'cancelada'
-        LIMIT 1
-      `,
-      [usuarioCodigo, fecha, hora],
-    );
+    const cita = await runner.cita.findFirst({
+      where: {
+        usuario_codigo: usuarioCodigo,
+        fecha: new Date(fecha),
+        hora: this.parseTime(hora),
+        estado: { not: 'cancelada' },
+      },
+    });
 
-    return result.rowCount === 0;
+    return !cita;
   }
 
   private validateCreateAppointmentRequest(
@@ -687,42 +532,23 @@ export class AppointmentsService {
     return value.trim();
   }
 
-  private toCompletedAppointmentResponse(
-    appointment: CompletedAppointmentRow,
-  ): CompletedAppointmentResponse {
-    return {
-      codigo: appointment.codigo,
-      usuarioCodigo: appointment.usuarioCodigo,
-      mascotaCodigo: appointment.mascotaCodigo,
-      clienteCodigo: appointment.clienteCodigo,
-      fecha: appointment.fecha,
-      hora: appointment.hora,
-      estado: appointment.estado,
-      total: Number(appointment.total),
-    };
-  }
-
   private async findActiveServices(
-    runner: QueryRunner,
+    runner: any,
     serviceCodes: string[],
   ): Promise<AppointmentServiceResponse[]> {
     const uniqueServiceCodes = [...new Set(serviceCodes)];
-    const result = await runner.query<ServiceRow>(
-      `
-        SELECT codigo, nombre, precio
-        FROM servicio
-        WHERE codigo = ANY($1::varchar[])
-          AND estado = 'activo'
-      `,
-      [uniqueServiceCodes],
-    );
+    
+    const services = await runner.servicio.findMany({
+      where: {
+        codigo: { in: uniqueServiceCodes },
+        estado: 'activo',
+      },
+    });
 
-    const servicesByCode = new Map(
-      result.rows.map((service) => [service.codigo, service]),
-    );
+    const servicesByCode = new Map(services.map((s: any) => [s.codigo, s]));
 
     const invalidServiceCode = uniqueServiceCodes.find(
-      (serviceCode) => !servicesByCode.has(serviceCode),
+      (code) => !servicesByCode.has(code),
     );
 
     if (invalidServiceCode) {
@@ -730,7 +556,7 @@ export class AppointmentsService {
     }
 
     return serviceCodes.map((serviceCode) => {
-      const service = servicesByCode.get(serviceCode);
+      const service = servicesByCode.get(serviceCode) as any;
 
       return {
         codigo: service.codigo,
