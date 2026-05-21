@@ -10,6 +10,7 @@ import * as bcrypt from 'bcrypt';
 import { DATABASE_POOL } from '../database/database.provider';
 import { AuditService } from '../audit/audit.service';
 import { MailService } from '../mail/mail.service';
+import { formatColombiaDate } from '../common/date.util';
 
 /**
  * Servicio de autenticacion.
@@ -168,7 +169,7 @@ export class AuthService {
       correo: usuario.correo,
       rol: usuario.rol,
       estado: usuario.estado,
-      creadoEn: usuario.creado_en,
+      creadoEn: formatColombiaDate(usuario.creado_en),
     };
   }
 

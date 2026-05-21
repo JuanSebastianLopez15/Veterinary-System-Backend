@@ -1,4 +1,4 @@
-import { Controller, HttpCode, HttpStatus, Param, Patch } from '@nestjs/common';
+import { Controller, Get, HttpCode, HttpStatus, Param, Patch } from '@nestjs/common';
 import { UsersService } from './users.service';
 
 /**
@@ -10,6 +10,18 @@ import { UsersService } from './users.service';
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
+
+  /**
+   * Retorna la lista de cuentas de recepcionistas y veterinarios pendientes de aprobacion.
+   * Muestra nombre, apellido, correo, rol y fecha de solicitud de cada cuenta.
+   *
+   * GET /api/v1/users/pending
+   */
+  @Get('pending')
+  @HttpCode(HttpStatus.OK)
+  getPendingUsers() {
+    return this.usersService.getPendingUsers();
+  }
 
   /**
    * Aprueba la cuenta de un recepcionista o veterinario pendiente de aprobacion.
