@@ -1,0 +1,18 @@
+import { Module } from '@nestjs/common';
+import { AuthController } from './auth.controller';
+import { AuthService } from './auth.service';
+import { DatabaseModule } from '../database/database.module';
+import { AuditModule } from '../audit/audit.module';
+
+/**
+ * Modulo de autenticacion.
+ * Gestiona registro, verificacion de correo e inicio de sesion.
+ * Importa DatabaseModule para acceso a BD y AuditModule para trazabilidad.
+ */
+@Module({
+  imports: [DatabaseModule, AuditModule],
+  controllers: [AuthController],
+  providers: [AuthService],
+  exports: [AuthService],
+})
+export class AuthModule {}
