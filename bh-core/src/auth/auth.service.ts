@@ -381,7 +381,7 @@ export class AuthService {
    * - Valida que correo y contrasena sean obligatorios y sin espacios
    * - Valida formato de correo y longitud maxima de 70 caracteres
    * - Busca el usuario por correo en la base de datos
-   * - Verifica que la cuenta este en estado activo
+   * - Verifica que la cuenta este en estado activo (bloquea y registra en auditoria si no lo esta)
    * - Verifica la contrasena con bcrypt
    * - Genera un token JWT con el codigo, correo y rol del usuario
    * - Emite evento de auditoria INICIO_DE_SESION_EXITOSO si las credenciales son correctas
@@ -439,21 +439,26 @@ export class AuthService {
 
     const usuario = rows[0];
 
-    // Verificar estado de la cuenta antes de validar contrasena
-    if (usuario.estado === 'pendiente_verificacion') {
-      throw new UnauthorizedException('Debes verificar tu correo antes de iniciar sesion');
-    }
-    if (usuario.estado === 'pendiente_aprobacion') {
-      throw new UnauthorizedException('Tu cuenta esta pendiente de aprobacion por el administrador');
-    }
-    if (usuario.estado === 'rechazado') {
-      throw new UnauthorizedException('Tu cuenta ha sido rechazada. Contacta al administrador');
-    }
-    if (usuario.estado === 'suspendido') {
-      throw new UnauthorizedException('Tu cuenta esta suspendida. Contacta al administrador');
-    }
-    if (usuario.estado === 'inactivo') {
-      throw new UnauthorizedException('Tu cuenta esta inactiva. Contacta al administrador');
+    // Verificar estado de la cuenta y registrar intento si esta bloqueada
+    const estadosBloqueados: Record<string, string> = {
+      pendiente_verificacion: 'Debes verificar tu correo antes de iniciar sesion',
+      pendiente_aprobacion: 'Tu cuenta esta pendiente de aprobacion por el administrador',
+      rechazado: 'Tu cuenta ha sido rechazada. Contacta al administrador',
+      suspendido: 'Tu cuenta esta suspendida. Contacta al administrador',
+      inactivo: 'Tu cuenta esta inactiva. Contacta al administrador',
+    };
+
+    if (estadosBloqueados[usuario.estado]) {
+      // Emitir evento de auditoria de acceso bloqueado
+      this.auditService.emit({
+        action: 'INTENTO_DE_SESION_FALLIDO',
+        userId: usuario.codigo,
+        userRole: usuario.rol,
+        entityType: 'Usuario',
+        entityId: usuario.codigo,
+        details: { correo: usuario.correo, motivo: `Cuenta en estado: ${usuario.estado}` },
+      });
+      throw new UnauthorizedException(estadosBloqueados[usuario.estado]);
     }
 
     // Verificar contrasena con bcrypt
