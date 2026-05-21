@@ -8,6 +8,7 @@ import { Pool } from 'pg';
 import * as bcrypt from 'bcrypt';
 import { DATABASE_POOL } from '../database/database.provider';
 import { AuditService } from '../audit/audit.service';
+import { MailService } from '../mail/mail.service';
 
 /**
  * Servicio de autenticacion.
@@ -18,6 +19,7 @@ export class AuthService {
   constructor(
     @Inject(DATABASE_POOL) private readonly pool: Pool,
     private readonly auditService: AuditService,
+    private readonly mailService: MailService,
   ) {}
 
   /**
@@ -141,7 +143,12 @@ export class AuthService {
       ],
     );
 
-    // TODO: Enviar correo con codigo de verificacion (SCRUM-80)
+    // Enviar correo con codigo de verificacion (no bloquea el registro si falla)
+    try {
+      await this.mailService.sendVerificationCode(usuario.correo, codigoVerificacion);
+    } catch {
+      console.error(`No se pudo enviar el correo de verificacion a ${usuario.correo}`);
+    }
 
     // Emitir evento de auditoria
     this.auditService.emit({
