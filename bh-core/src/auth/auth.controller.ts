@@ -23,4 +23,18 @@ export class AuthController {
   register(@Body() body: any) {
     return this.authService.register(body);
   }
+
+  /**
+   * Verifica el codigo de 6 digitos enviado al correo del usuario al registrarse.
+   * Si el codigo es correcto y no ha expirado, la cuenta pasa a estado activo.
+   * El codigo expira a los 15 minutos de haberse generado.
+   *
+   * POST /api/v1/auth/verify-email
+   * @param body - { correo, codigo }
+   */
+  @Post('verify-email')
+  @HttpCode(HttpStatus.OK)
+  verifyEmail(@Body() body: any) {
+    return this.authService.verifyEmail(body);
+  }
 }
