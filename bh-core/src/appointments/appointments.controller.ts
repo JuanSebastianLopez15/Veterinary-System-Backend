@@ -4,6 +4,8 @@ import {
   Controller,
   Get,
   Headers,
+  Param,
+  Patch,
   Post,
   Query,
 } from '@nestjs/common';
@@ -14,6 +16,7 @@ import {
   CreateClientAppointmentRequest,
   CreatedAppointmentResponse,
   DailyAgendaAppointmentResponse,
+  CompletedAppointmentResponse,
 } from './appointments.service';
 
 @Controller('appointments')
@@ -35,6 +38,17 @@ export class AppointmentsController {
     return this.appointmentsService.createClientAppointmentFromAccount(
       authenticatedUserCode,
       body,
+    );
+  }
+
+  @Patch(':codigo/complete')
+  async completeAppointment(
+    @Param('codigo') codigo: string,
+    @Headers('x-user-code') authenticatedUserCode: string | undefined,
+  ): Promise<CompletedAppointmentResponse> {
+    return this.appointmentsService.completeAppointment(
+      codigo,
+      authenticatedUserCode,
     );
   }
 
