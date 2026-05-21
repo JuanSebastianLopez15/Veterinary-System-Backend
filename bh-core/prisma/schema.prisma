@@ -1,0 +1,211 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model usuario {
+  codigo     String   @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar(50)
+  nombre     String   @db.VarChar(50)
+  apellido   String   @db.VarChar(50)
+  correo     String   @unique @db.VarChar(70)
+  contrasena String   @db.VarChar(20)
+  rol        String   @db.VarChar(30)
+  telefono   String   @db.VarChar(10)
+  estado     String   @default("pendiente_verificacion") @db.VarChar(40)
+  creado_en  DateTime @default(now()) @db.Timestamp(6)
+  codigo_verificacion String? @db.VarChar(10)
+  codigo_verificacion_expira_en DateTime? @db.Timestamp(6)
+
+  cliente          cliente?
+  citas            cita[]
+  historiales      historial_medico[]
+  hospitalizaciones hospitalizacion[]
+  notas_evolucion  nota_evolucion[]
+}
+
+model cliente {
+  codigo         String @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar(50)
+  usuario_codigo String @unique @db.VarChar(50)
+  direccion      String @db.VarChar(50)
+  ciudad         String @db.VarChar(50)
+
+  usuario  usuario  @relation(fields: [usuario_codigo], references: [codigo])
+  mascotas mascotas[]
+  citas    cita[]
+  facturas factura[]
+}
+
+model mascotas {
+  codigo          String   @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar(50)
+  cliente_codigo  String   @db.VarChar(50)
+  nombre          String   @db.VarChar(50)
+  especie         String   @db.VarChar(70)
+  raza            String   @db.VarChar(70)
+  color           String   @db.VarChar(20)
+  fecha_nacimiento DateTime @db.Date
+  peso            Float    @db.DoublePrecision
+  estado          String   @default("activa") @db.VarChar(20)
+
+  cliente          cliente           @relation(fields: [cliente_codigo], references: [codigo])
+  citas            cita[]
+  historiales      historial_medico[]
+  vacunas          vacuna[]
+  hospitalizaciones hospitalizacion[]
+}
+
+model servicio {
+  codigo      String @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar(50)
+  nombre      String @db.VarChar(50)
+  descripcion String @db.VarChar(100)
+  precio      Float  @db.DoublePrecision
+  estado      String @default("activo") @db.VarChar(20)
+  creado_en   DateTime @default(now()) @db.Timestamp(6)
+  actualizado_en DateTime @default(now()) @db.Timestamp(6)
+
+  citas_servicios cita_servicios[]
+}
+
+model producto {
+  codigo            String   @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar(50)
+  nombre            String   @db.VarChar(100)
+  tipo              String   @db.VarChar(70)
+  stock             Int      @default(0)
+  stock_minimo      Int
+  precio            Float    @db.DoublePrecision
+  fecha_vencimiento DateTime @db.Date
+  creado_en         DateTime @default(now()) @db.Timestamp(6)
+
+  medicamentos_prescritos medicamento_prescrito[]
+}
+
+model pago {
+  codigo      String   @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar(50)
+  cita_codigo String   @unique @db.VarChar(50)
+  monto       Float    @db.DoublePrecision
+  metodo_pago String   @db.VarChar(20)
+  fecha       DateTime @db.Date
+
+  cita cita @relation(fields: [cita_codigo], references: [codigo])
+}
+
+model cita {
+  codigo             String   @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar(50)
+  usuario_codigo     String   @db.VarChar(50)
+  mascota_codigo     String   @db.VarChar(50)
+  cliente_codigo     String   @db.VarChar(50)
+  fecha              DateTime @db.Date
+  hora               DateTime @db.Time(6)
+  estado             String   @default("confirmada") @db.VarChar(20)
+  motivo_cancelacion String?  @db.VarChar(255)
+  total              Decimal  @db.Decimal(10, 2)
+
+  usuario        usuario          @relation(fields: [usuario_codigo], references: [codigo])
+  mascota        mascotas         @relation(fields: [mascota_codigo], references: [codigo])
+  cliente        cliente          @relation(fields: [cliente_codigo], references: [codigo])
+  pago           pago?
+  cita_servicios cita_servicios[]
+  historial_medico historial_medico?
+  factura        factura?
+}
+
+model cita_servicios {
+  codigo          String @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar(50)
+  cita_codigo     String @db.VarChar(50)
+  servicio_codigo String @db.VarChar(50)
+  nombre          String @db.VarChar(50)
+  precio_unitario Float  @db.DoublePrecision
+
+  cita     cita     @relation(fields: [cita_codigo], references: [codigo])
+  servicio servicio @relation(fields: [servicio_codigo], references: [codigo])
+}
+
+model historial_medico {
+  codigo               String   @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar(50)
+  cita_codigo          String   @unique @db.VarChar(50)
+  mascota_codigo       String   @db.VarChar(50)
+  veterinario_codigo   String   @db.VarChar(50)
+  motivo_visita        String   @db.VarChar(200)
+  diagnostico          String   @db.VarChar(150)
+  tratamiento_aplicado String   @db.VarChar(150)
+  peso_mascota         Float    @db.DoublePrecision
+  proxima_visita       DateTime? @db.Date
+  editable_hasta       DateTime @db.Timestamp(6)
+  creado_en            DateTime @default(now()) @db.Timestamp(6)
+
+  cita        cita       @relation(fields: [cita_codigo], references: [codigo])
+  mascota     mascotas   @relation(fields: [mascota_codigo], references: [codigo])
+  veterinario usuario    @relation(fields: [veterinario_codigo], references: [codigo])
+  vacunas     vacuna[]
+  medicamentos medicamento_prescrito[]
+}
+
+model vacuna {
+  codigo                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar(50)
+  historial_codigo       String    @db.VarChar(50)
+  mascota_codigo         String    @db.VarChar(50)
+  nombre                 String    @db.VarChar(100)
+  fecha                  DateTime  @db.Date
+  fecha_siguiente_vacuna DateTime? @db.Date
+
+  historial_medico historial_medico @relation(fields: [historial_codigo], references: [codigo])
+  mascota          mascotas         @relation(fields: [mascota_codigo], references: [codigo])
+}
+
+model medicamento_prescrito {
+  codigo                           String @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar(50)
+  historial_codigo                 String @db.VarChar(50)
+  producto_codigo                  String? @db.VarChar(50)
+  dosis                            String @db.VarChar(70)
+  duracion                         String @db.VarChar(70)
+  cantidad_medicamentos_prescritos Int
+
+  historial_medico historial_medico @relation(fields: [historial_codigo], references: [codigo])
+  producto         producto?        @relation(fields: [producto_codigo], references: [codigo])
+}
+
+model hospitalizacion {
+  codigo             String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar(50)
+  mascota_codigo     String    @db.VarChar(50)
+  veterinario_codigo String    @db.VarChar(50)
+  fecha_ingreso      DateTime  @db.Date
+  fecha_salida       DateTime? @db.Date
+  estado_egreso      String?   @db.VarChar(70)
+  motivo             String    @db.VarChar(255)
+  activa             Boolean   @default(true)
+
+  mascota         mascotas         @relation(fields: [mascota_codigo], references: [codigo])
+  veterinario     usuario          @relation(fields: [veterinario_codigo], references: [codigo])
+  notas_evolucion nota_evolucion[]
+}
+
+model nota_evolucion {
+  codigo                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar(50)
+  hospitalizacion_codigo String   @db.VarChar(50)
+  veterinario_codigo     String   @db.VarChar(50)
+  fecha                  DateTime @default(now()) @db.Date
+  descripcion            String   @db.VarChar(500)
+  estado_egreso          String?  @db.VarChar(70)
+
+  hospitalizacion hospitalizacion @relation(fields: [hospitalizacion_codigo], references: [codigo])
+  veterinario     usuario         @relation(fields: [veterinario_codigo], references: [codigo])
+}
+
+model factura {
+  codigo          String   @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar(50)
+  cita_codigo     String   @unique @db.VarChar(50)
+  cliente_codigo  String   @db.VarChar(50)
+  fecha           DateTime @default(now()) @db.Date
+  total           Decimal  @db.Decimal(10, 2)
+  descuento       Decimal  @default(0) @db.Decimal(10, 2)
+  motivo_anulado  String?  @db.VarChar(200)
+  estado          String   @default("pendiente") @db.VarChar(20)
+  prepagado       Decimal  @default(0) @db.Decimal(10, 2)
+  saldo_pendiente Decimal  @default(0) @db.Decimal(10, 2)
+
+  cita    cita    @relation(fields: [cita_codigo], references: [codigo])
+  cliente cliente @relation(fields: [cliente_codigo], references: [codigo])
+}

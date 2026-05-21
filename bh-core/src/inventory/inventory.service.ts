@@ -1,8 +1,6 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { Pool } from 'pg';
-
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
-import { DATABASE_POOL } from '../database/database.provider';
 
 const VALID_CATEGORIES = ['medicamento', 'vacuna', 'insumo_quirurgico'] as const;
 type Category = (typeof VALID_CATEGORIES)[number];
@@ -26,11 +24,12 @@ interface UpdateProductData {
 @Injectable()
 export class InventoryService {
   constructor(
-    @Inject(DATABASE_POOL) private readonly pool: Pool,
+    private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
   ) {}
 
-  private mapRow(row: Record<string, unknown>) {
+  private mapRow(row: any) {
+    if (!row) return null;
     const expirationDate = row.fecha_vencimiento as Date | null;
     const stock = row.stock as number;
     const minStock = row.stock_minimo as number;
@@ -51,7 +50,7 @@ export class InventoryService {
       category: row.tipo,
       stock,
       minStock,
-      price: typeof row.precio === 'string' ? parseFloat(row.precio) : row.precio,
+      price: row.precio,
       expirationDate: expirationDate
         ? expirationDate instanceof Date
           ? expirationDate.toISOString().split('T')[0]
@@ -64,30 +63,31 @@ export class InventoryService {
   }
 
   async create(data: CreateProductData) {
-    const result = await this.pool.query<Record<string, unknown>>(
-      `INSERT INTO Producto (nombre, tipo, stock, stock_minimo, precio, fecha_vencimiento)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING *`,
-      [
-        data.name,
-        data.category,
-        data.stock,
-        data.minStock,
-        data.price,
-        data.expirationDate ?? null,
-      ],
-    );
-    return this.mapRow(result.rows[0]);
+    const row = await this.prisma.producto.create({
+      data: {
+        nombre: data.name,
+        tipo: data.category,
+        stock: data.stock,
+        stock_minimo: data.minStock,
+        precio: data.price,
+        fecha_vencimiento: data.expirationDate ? new Date(data.expirationDate) : new Date(),
+      },
+    });
+    return this.mapRow(row);
   }
 
   async findAll(category?: string) {
-    const values: unknown[] = [];
-    const where = category ? `WHERE tipo = $${values.push(category)}` : '';
-    const result = await this.pool.query<Record<string, unknown>>(
-      `SELECT * FROM Producto ${where} ORDER BY nombre ASC`,
-      values,
-    );
-    const data = result.rows.map((r) => this.mapRow(r));
+    const where: any = {};
+    if (category) {
+      where.tipo = category;
+    }
+
+    const rows = await this.prisma.producto.findMany({
+      where,
+      orderBy: { nombre: 'asc' },
+    });
+
+    const data = rows.map((r) => this.mapRow(r));
     return {
       data,
       meta: { total: data.length, page: 1, limit: data.length || 20, totalPages: 1 },
@@ -95,13 +95,14 @@ export class InventoryService {
   }
 
   async findLowStock(category?: string) {
-    const values: unknown[] = [];
-    const categoryClause = category ? `AND tipo = $${values.push(category)}` : '';
-    const result = await this.pool.query<Record<string, unknown>>(
-      `SELECT * FROM Producto WHERE stock < stock_minimo ${categoryClause} ORDER BY stock ASC`,
-      values,
-    );
-    const data = result.rows.map((r) => this.mapRow(r));
+    let rows;
+    if (category) {
+      rows = await this.prisma.$queryRaw<any[]>`SELECT * FROM producto WHERE stock < stock_minimo AND tipo = ${category} ORDER BY stock ASC`;
+    } else {
+      rows = await this.prisma.$queryRaw<any[]>`SELECT * FROM producto WHERE stock < stock_minimo ORDER BY stock ASC`;
+    }
+
+    const data = rows.map((r) => this.mapRow(r));
     return {
       data,
       meta: { total: data.length, page: 1, limit: data.length || 20, totalPages: 1 },
@@ -109,18 +110,26 @@ export class InventoryService {
   }
 
   async findExpiring(daysAhead = 30, category?: string) {
-    const values: unknown[] = [daysAhead];
-    const categoryClause = category ? `AND tipo = $${values.push(category)}` : '';
-    const result = await this.pool.query<Record<string, unknown>>(
-      `SELECT * FROM Producto
-       WHERE fecha_vencimiento IS NOT NULL
-         AND fecha_vencimiento >= CURRENT_DATE
-         AND fecha_vencimiento <= CURRENT_DATE + ($1 || ' days')::INTERVAL
-         ${categoryClause}
-       ORDER BY fecha_vencimiento ASC`,
-      values,
-    );
-    const data = result.rows.map((r) => this.mapRow(r));
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const limit = new Date(today.getTime() + daysAhead * 24 * 60 * 60 * 1000);
+
+    const where: any = {
+      fecha_vencimiento: {
+        gte: today,
+        lte: limit,
+      },
+    };
+    if (category) {
+      where.tipo = category;
+    }
+
+    const rows = await this.prisma.producto.findMany({
+      where,
+      orderBy: { fecha_vencimiento: 'asc' },
+    });
+
+    const data = rows.map((r) => this.mapRow(r));
     return {
       data,
       meta: { total: data.length, page: 1, limit: data.length || 20, totalPages: 1 },
@@ -128,57 +137,37 @@ export class InventoryService {
   }
 
   async findOne(id: string) {
-    const result = await this.pool.query<Record<string, unknown>>(
-      'SELECT * FROM Producto WHERE codigo = $1',
-      [id],
-    );
-    if (result.rowCount === 0) return null;
-    return this.mapRow(result.rows[0]);
+    const row = await this.prisma.producto.findUnique({
+      where: { codigo: id },
+    });
+    return this.mapRow(row);
   }
 
   async update(id: string, data: UpdateProductData) {
-    const fields: string[] = [];
-    const values: unknown[] = [];
-    let idx = 1;
-
-    if (data.name !== undefined) {
-      fields.push(`nombre = $${idx++}`);
-      values.push(data.name);
-    }
-    if (data.price !== undefined) {
-      fields.push(`precio = $${idx++}`);
-      values.push(data.price);
-    }
-    if (data.minStock !== undefined) {
-      fields.push(`stock_minimo = $${idx++}`);
-      values.push(data.minStock);
-    }
-    if (data.expirationDate !== undefined) {
-      fields.push(`fecha_vencimiento = $${idx++}`);
-      values.push(data.expirationDate);
-    }
-
-    if (fields.length === 0) {
+    if (Object.keys(data).length === 0) {
       return this.findOne(id);
     }
 
-    values.push(id);
-    const result = await this.pool.query<Record<string, unknown>>(
-      `UPDATE Producto SET ${fields.join(', ')} WHERE codigo = $${idx} RETURNING *`,
-      values,
-    );
-    if (result.rowCount === 0) return null;
-    return this.mapRow(result.rows[0]);
+    const updateData: any = {};
+    if (data.name !== undefined) updateData.nombre = data.name;
+    if (data.price !== undefined) updateData.precio = data.price;
+    if (data.minStock !== undefined) updateData.stock_minimo = data.minStock;
+    if (data.expirationDate !== undefined) updateData.fecha_vencimiento = new Date(data.expirationDate);
+
+    try {
+      const row = await this.prisma.producto.update({
+        where: { codigo: id },
+        data: updateData,
+      });
+      return this.mapRow(row);
+    } catch {
+      return null;
+    }
   }
 
-  async adjustStock(
-    id: string,
-    quantity: number,
-    reason: string,
-    ipAddress?: string,
-  ) {
+  async adjustStock(id: string, quantity: number, reason: string, ipAddress?: string) {
     const current = await this.findOne(id);
-    if (!current) return null;
+    if (!current) throw new NotFoundException('Producto no encontrado');
 
     const previousStock = current.stock as number;
     const newStock = previousStock + quantity;
@@ -189,14 +178,14 @@ export class InventoryService {
       );
     }
 
-    const result = await this.pool.query<Record<string, unknown>>(
-      'UPDATE Producto SET stock = stock + $1 WHERE codigo = $2 RETURNING *',
-      [quantity, id],
-    );
+    const row = await this.prisma.producto.update({
+      where: { codigo: id },
+      data: {
+        stock: { increment: quantity },
+      },
+    });
 
-    if (result.rowCount === 0) throw new NotFoundException('Producto no encontrado');
-
-    const updated = this.mapRow(result.rows[0]);
+    const updated = this.mapRow(row);
 
     this.auditService.emit({
       action: 'AJUSTE_INVENTARIO',
@@ -207,7 +196,7 @@ export class InventoryService {
       details: {
         productName: current.name,
         previousStock,
-        newStock: updated.stock,
+        newStock: updated?.stock,
         adjustment: quantity,
         reason,
       },

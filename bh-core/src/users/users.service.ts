@@ -1,11 +1,9 @@
 import {
   BadRequestException,
-  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Pool } from 'pg';
-import { DATABASE_POOL } from '../database/database.provider';
+import { PrismaService } from '../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { formatColombiaDate } from '../common/date.util';
 
@@ -16,7 +14,7 @@ import { formatColombiaDate } from '../common/date.util';
 @Injectable()
 export class UsersService {
   constructor(
-    @Inject(DATABASE_POOL) private readonly pool: Pool,
+    private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
   ) {}
 
@@ -30,17 +28,17 @@ export class UsersService {
    * @returns Lista de cuentas pendientes de aprobacion
    */
   async getPendingUsers() {
-    const { rows } = await this.pool.query(
-      `SELECT codigo, nombre, apellido, correo, rol, creado_en
-       FROM usuario
-       WHERE estado = 'pendiente_aprobacion'
-         AND rol IN ('RECEPCIONISTA', 'VETERINARIO')
-       ORDER BY creado_en ASC`,
-    );
+    const usuarios = await this.prisma.usuario.findMany({
+      where: {
+        estado: 'pendiente_aprobacion',
+        rol: { in: ['RECEPCIONISTA', 'VETERINARIO'] },
+      },
+      orderBy: { creado_en: 'asc' },
+    });
 
     return {
-      total: rows.length,
-      usuarios: rows.map((u) => ({
+      total: usuarios.length,
+      usuarios: usuarios.map((u) => ({
         codigo: u.codigo,
         nombre: u.nombre,
         apellido: u.apellido,
@@ -64,7 +62,6 @@ export class UsersService {
    * @returns Total de usuarios y lista con sus datos
    */
   async getAllUsers(rol?: string, estado?: string) {
-
     // Validacion del filtro de rol si se proporciona
     const rolesPermitidos = ['ADMIN', 'CLIENTE', 'RECEPCIONISTA', 'VETERINARIO'];
     if (rol && !rolesPermitidos.includes(rol.toUpperCase())) {
@@ -82,35 +79,31 @@ export class UsersService {
     }
 
     // Construir query dinamica con filtros opcionales
-    const condiciones: string[] = [];
-    const valores: string[] = [];
-    let indice = 1;
-
+    const where: any = {};
     if (rol) {
-      condiciones.push(`rol = $${indice}`);
-      valores.push(rol.toUpperCase());
-      indice++;
+      where.rol = rol.toUpperCase();
     }
-
     if (estado) {
-      condiciones.push(`estado = $${indice}`);
-      valores.push(estado.toLowerCase());
-      indice++;
+      where.estado = estado.toLowerCase();
     }
 
-    const whereClause = condiciones.length > 0 ? `WHERE ${condiciones.join(' AND ')}` : '';
-
-    const { rows } = await this.pool.query(
-      `SELECT codigo, nombre, apellido, correo, rol, estado, creado_en
-       FROM usuario
-       ${whereClause}
-       ORDER BY creado_en DESC`,
-      valores,
-    );
+    const usuarios = await this.prisma.usuario.findMany({
+      where,
+      orderBy: { creado_en: 'desc' },
+      select: {
+        codigo: true,
+        nombre: true,
+        apellido: true,
+        correo: true,
+        rol: true,
+        estado: true,
+        creado_en: true,
+      },
+    });
 
     return {
-      total: rows.length,
-      usuarios: rows.map((u) => ({
+      total: usuarios.length,
+      usuarios: usuarios.map((u) => ({
         codigo: u.codigo,
         nombre: u.nombre,
         apellido: u.apellido,
@@ -159,17 +152,21 @@ export class UsersService {
     }
 
     // Buscar usuario por codigo UUID
-    const { rows } = await this.pool.query(
-      `SELECT codigo, nombre, apellido, correo, rol, estado
-       FROM usuario WHERE codigo = $1 LIMIT 1`,
-      [id],
-    );
+    const usuario = await this.prisma.usuario.findUnique({
+      where: { codigo: id },
+      select: {
+        codigo: true,
+        nombre: true,
+        apellido: true,
+        correo: true,
+        rol: true,
+        estado: true,
+      },
+    });
 
-    if (rows.length === 0) {
+    if (!usuario) {
       throw new NotFoundException('No existe un usuario con ese codigo');
     }
-
-    const usuario = rows[0];
 
     // Verificar que la cuenta este activa
     if (usuario.estado !== 'activo') {
@@ -179,10 +176,10 @@ export class UsersService {
     }
 
     // Suspender la cuenta actualizando el estado a suspendido
-    await this.pool.query(
-      `UPDATE usuario SET estado = 'suspendido' WHERE codigo = $1`,
-      [id],
-    );
+    await this.prisma.usuario.update({
+      where: { codigo: id },
+      data: { estado: 'suspendido' },
+    });
 
     // Emitir evento de auditoria
     this.auditService.emit({
@@ -242,17 +239,21 @@ export class UsersService {
     }
 
     // Buscar usuario por codigo UUID
-    const { rows } = await this.pool.query(
-      `SELECT codigo, nombre, apellido, correo, rol, estado
-       FROM usuario WHERE codigo = $1 LIMIT 1`,
-      [id],
-    );
+    const usuario = await this.prisma.usuario.findUnique({
+      where: { codigo: id },
+      select: {
+        codigo: true,
+        nombre: true,
+        apellido: true,
+        correo: true,
+        rol: true,
+        estado: true,
+      },
+    });
 
-    if (rows.length === 0) {
+    if (!usuario) {
       throw new NotFoundException('No existe un usuario con ese codigo');
     }
-
-    const usuario = rows[0];
 
     // Verificar que el rol sea RECEPCIONISTA o VETERINARIO
     const rolesRechazables = ['RECEPCIONISTA', 'VETERINARIO'];
@@ -270,10 +271,10 @@ export class UsersService {
     }
 
     // Rechazar la cuenta actualizando el estado a rechazado
-    await this.pool.query(
-      `UPDATE usuario SET estado = 'rechazado' WHERE codigo = $1`,
-      [id],
-    );
+    await this.prisma.usuario.update({
+      where: { codigo: id },
+      data: { estado: 'rechazado' },
+    });
 
     // Emitir evento de auditoria
     this.auditService.emit({
@@ -308,7 +309,6 @@ export class UsersService {
    * @returns Mensaje de exito y datos del usuario aprobado
    */
   async approveUser(id: string) {
-
     // Validacion de formato UUID
     const regexUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!regexUUID.test(id)) {
@@ -316,17 +316,21 @@ export class UsersService {
     }
 
     // Buscar usuario por codigo UUID
-    const { rows } = await this.pool.query(
-      `SELECT codigo, nombre, apellido, correo, rol, estado
-       FROM usuario WHERE codigo = $1 LIMIT 1`,
-      [id],
-    );
+    const usuario = await this.prisma.usuario.findUnique({
+      where: { codigo: id },
+      select: {
+        codigo: true,
+        nombre: true,
+        apellido: true,
+        correo: true,
+        rol: true,
+        estado: true,
+      },
+    });
 
-    if (rows.length === 0) {
+    if (!usuario) {
       throw new NotFoundException('No existe un usuario con ese codigo');
     }
-
-    const usuario = rows[0];
 
     // Verificar que el rol sea RECEPCIONISTA o VETERINARIO
     const rolesAprobables = ['RECEPCIONISTA', 'VETERINARIO'];
@@ -344,10 +348,10 @@ export class UsersService {
     }
 
     // Aprobar la cuenta actualizando el estado a activo
-    await this.pool.query(
-      `UPDATE usuario SET estado = 'activo' WHERE codigo = $1`,
-      [id],
-    );
+    await this.prisma.usuario.update({
+      where: { codigo: id },
+      data: { estado: 'activo' },
+    });
 
     // Emitir evento de auditoria
     this.auditService.emit({

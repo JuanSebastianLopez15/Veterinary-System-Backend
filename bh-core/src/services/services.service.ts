@@ -1,8 +1,6 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { Pool } from 'pg';
-
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
-import { DATABASE_POOL } from '../database/database.provider';
 
 interface CreateServiceData {
   name: string;
@@ -19,16 +17,17 @@ interface UpdateServiceData {
 @Injectable()
 export class ServicesService {
   constructor(
-    @Inject(DATABASE_POOL) private readonly pool: Pool,
+    private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
   ) {}
 
-  private mapRow(row: Record<string, unknown>) {
+  private mapRow(row: any) {
+    if (!row) return null;
     return {
       id: row.codigo,
       name: row.nombre,
       description: row.descripcion,
-      price: typeof row.precio === 'string' ? parseFloat(row.precio) : row.precio,
+      price: row.precio,
       isActive: row.estado === 'activo',
       createdAt: row.creado_en ?? null,
       updatedAt: row.actualizado_en ?? null,
@@ -36,13 +35,16 @@ export class ServicesService {
   }
 
   async create(data: CreateServiceData, ipAddress?: string) {
-    const result = await this.pool.query<Record<string, unknown>>(
-      `INSERT INTO Servicio (nombre, descripcion, precio)
-       VALUES ($1, $2, $3)
-       RETURNING *`,
-      [data.name, data.description, data.price],
-    );
-    const created = this.mapRow(result.rows[0]);
+    const row = await this.prisma.servicio.create({
+      data: {
+        nombre: data.name,
+        descripcion: data.description,
+        precio: data.price,
+        estado: 'activo',
+      },
+    });
+    
+    const created = this.mapRow(row);
 
     this.auditService.emit({
       action: 'CREACION_SERVICIO',
@@ -62,20 +64,20 @@ export class ServicesService {
   }
 
   async findAll(isActive?: boolean) {
-    const values: unknown[] = [];
-    let where = '';
+    const where: any = {};
 
     if (isActive === true) {
-      where = `WHERE estado = $${values.push('activo')}`;
+      where.estado = 'activo';
     } else if (isActive === false) {
-      where = `WHERE estado = $${values.push('inactivo')}`;
+      where.estado = 'inactivo';
     }
 
-    const result = await this.pool.query<Record<string, unknown>>(
-      `SELECT * FROM Servicio ${where} ORDER BY nombre ASC`,
-      values,
-    );
-    const data = result.rows.map((r) => this.mapRow(r));
+    const rows = await this.prisma.servicio.findMany({
+      where,
+      orderBy: { nombre: 'asc' },
+    });
+    
+    const data = rows.map((r) => this.mapRow(r));
     return {
       data,
       meta: { total: data.length, page: 1, limit: data.length || 20, totalPages: 1 },
@@ -83,80 +85,74 @@ export class ServicesService {
   }
 
   async findOne(id: string) {
-    const result = await this.pool.query<Record<string, unknown>>(
-      'SELECT * FROM Servicio WHERE codigo = $1',
-      [id],
-    );
-    if (result.rowCount === 0) return null;
-    return this.mapRow(result.rows[0]);
+    const row = await this.prisma.servicio.findUnique({
+      where: { codigo: id },
+    });
+    if (!row) return null;
+    return this.mapRow(row);
   }
 
   async update(id: string, data: UpdateServiceData, ipAddress?: string) {
-    const fields: string[] = [];
-    const values: unknown[] = [];
-    let idx = 1;
+    if (Object.keys(data).length === 0) return this.findOne(id);
 
-    if (data.name !== undefined) {
-      fields.push(`nombre = $${idx++}`);
-      values.push(data.name);
+    const updateData: any = { actualizado_en: new Date() };
+    if (data.name !== undefined) updateData.nombre = data.name;
+    if (data.description !== undefined) updateData.descripcion = data.description;
+    if (data.price !== undefined) updateData.precio = data.price;
+
+    try {
+      const row = await this.prisma.servicio.update({
+        where: { codigo: id },
+        data: updateData,
+      });
+      
+      const updated = this.mapRow(row);
+
+      this.auditService.emit({
+        action: 'EDICION_SERVICIO',
+        userId: null,
+        userRole: null,
+        entityType: 'Service',
+        entityId: id,
+        details: {
+          name: updated.name,
+          price: updated.price,
+          changes: data,
+        },
+        ipAddress,
+      });
+
+      return updated;
+    } catch (e) {
+      return null;
     }
-    if (data.description !== undefined) {
-      fields.push(`descripcion = $${idx++}`);
-      values.push(data.description);
-    }
-    if (data.price !== undefined) {
-      fields.push(`precio = $${idx++}`);
-      values.push(data.price);
-    }
-
-    if (fields.length === 0) return this.findOne(id);
-
-    fields.push(`actualizado_en = now()`);
-    values.push(id);
-
-    const result = await this.pool.query<Record<string, unknown>>(
-      `UPDATE Servicio SET ${fields.join(', ')} WHERE codigo = $${idx} RETURNING *`,
-      values,
-    );
-    if (result.rowCount === 0) return null;
-    const updated = this.mapRow(result.rows[0]);
-
-    this.auditService.emit({
-      action: 'EDICION_SERVICIO',
-      userId: null,
-      userRole: null,
-      entityType: 'Service',
-      entityId: id,
-      details: {
-        name: updated.name,
-        price: updated.price,
-        changes: data,
-      },
-      ipAddress,
-    });
-
-    return updated;
   }
 
   async deactivate(id: string, ipAddress?: string) {
-    const result = await this.pool.query<Record<string, unknown>>(
-      `UPDATE Servicio SET estado = 'inactivo', actualizado_en = now()
-       WHERE codigo = $1 RETURNING *`,
-      [id],
-    );
-    if (result.rowCount === 0) return null;
-    const deactivated = this.mapRow(result.rows[0]);
+    try {
+      const row = await this.prisma.servicio.update({
+        where: { codigo: id },
+        data: {
+          estado: 'inactivo',
+          actualizado_en: new Date(),
+        },
+      });
+      
+      const deactivated = this.mapRow(row);
 
-    this.auditService.emit({
-      action: 'DESACTIVACION_SERVICIO',
-      userId: null,
-      userRole: null,
-      entityType: 'Service',
-      entityId: id,
-      details: { name: deactivated.name },
-      ipAddress,
-    });
+      this.auditService.emit({
+        action: 'DESACTIVACION_SERVICIO',
+        userId: null,
+        userRole: null,
+        entityType: 'Service',
+        entityId: id,
+        details: { name: deactivated.name },
+        ipAddress,
+      });
 
-    return deactivated;
+      return deactivated;
+    } catch (e) {
+      return null;
+    }
   }
 }

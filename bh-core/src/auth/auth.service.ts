@@ -1,14 +1,12 @@
 import {
   BadRequestException,
   ConflictException,
-  Inject,
   Injectable,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { Pool } from 'pg';
 import * as bcrypt from 'bcrypt';
-import { DATABASE_POOL } from '../database/database.provider';
+import { PrismaService } from '../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { MailService } from '../mail/mail.service';
 import { JwtService } from '@nestjs/jwt';
@@ -21,32 +19,18 @@ import { formatColombiaDate } from '../common/date.util';
 @Injectable()
 export class AuthService {
   constructor(
-    @Inject(DATABASE_POOL) private readonly pool: Pool,
+    private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly mailService: MailService,
     private readonly jwtService: JwtService,
   ) {}
 
-  /**
-   * Registra un nuevo usuario en el sistema.
-   * - Valida todos los campos obligatorios
-   * - Verifica que el correo no este duplicado
-   * - Hashea la contrasena con bcrypt
-   * - Genera un codigo de verificacion de 6 digitos con expiracion de 15 minutos
-   * - Emite evento de auditoria REGISTRO_DE_USUARIO
-   *
-   * @param body - Datos del formulario de registro
-   * @returns Datos del usuario creado (sin contrasena)
-   */
   async register(body: any) {
     const { nombre, apellido, correo, contrasena, telefono, rol } = body;
 
-    // Validacion de campos obligatorios
     if (!nombre || !apellido || !correo || !contrasena || !telefono || !rol) {
       throw new BadRequestException('Todos los campos son obligatorios');
     }
-
-    // Validacion: ningun campo puede contener espacios
     if (/\s/.test(nombre))     throw new BadRequestException('El nombre no puede contener espacios');
     if (/\s/.test(apellido))   throw new BadRequestException('El apellido no puede contener espacios');
     if (/\s/.test(correo))     throw new BadRequestException('El correo no puede contener espacios');
@@ -54,7 +38,6 @@ export class AuthService {
     if (/\s/.test(telefono))   throw new BadRequestException('El telefono no puede contener espacios');
     if (/\s/.test(rol))        throw new BadRequestException('El rol no puede contener espacios');
 
-    // Validacion de nombre: solo letras (sin numeros, sin simbolos como ***,///,777). Ej: isabela
     const regexSoloLetras = /^[a-zA-ZáéíóúÁÉÍÓÚñÑ]+$/;
     if (nombre.length < 3 || nombre.length > 50) {
       throw new BadRequestException('El nombre debe tener entre 3 y 50 caracteres');
@@ -63,7 +46,6 @@ export class AuthService {
       throw new BadRequestException('El nombre solo puede contener letras. Ejemplo: isabela');
     }
 
-    // Validacion de apellido: solo letras (sin numeros, sin simbolos como ***,///,777). Ej: quintero
     if (apellido.length < 3 || apellido.length > 50) {
       throw new BadRequestException('El apellido debe tener entre 3 y 50 caracteres');
     }
@@ -71,7 +53,6 @@ export class AuthService {
       throw new BadRequestException('El apellido solo puede contener letras. Ejemplo: quintero');
     }
 
-    // Validacion de correo: debe contener @, formato valido
     const regexCorreo = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!regexCorreo.test(correo)) {
       throw new BadRequestException('El correo debe tener un formato valido. Ejemplo: usuario@correo.com');
@@ -80,7 +61,6 @@ export class AuthService {
       throw new BadRequestException('El correo no puede tener mas de 70 caracteres');
     }
 
-    // Validacion de contrasena: minimo 8, al menos una mayuscula, minuscula y numero
     if (contrasena.length < 8 || contrasena.length > 50) {
       throw new BadRequestException('La contrasena debe tener entre 8 y 50 caracteres');
     }
@@ -94,7 +74,6 @@ export class AuthService {
       throw new BadRequestException('La contrasena debe tener al menos un numero');
     }
 
-    // Validacion de telefono: exactamente 10 digitos, debe iniciar con 3
     const regexTelefono = /^\d{10}$/;
     if (!regexTelefono.test(telefono)) {
       throw new BadRequestException('El telefono debe tener exactamente 10 digitos');
@@ -103,59 +82,44 @@ export class AuthService {
       throw new BadRequestException('El telefono debe ser un celular colombiano (iniciar con 3)');
     }
 
-    // Validacion de rol permitido
     const rolesPermitidos = ['CLIENTE', 'RECEPCIONISTA', 'VETERINARIO'];
     const rolNormalizado = rol.toUpperCase();
     if (!rolesPermitidos.includes(rolNormalizado)) {
       throw new BadRequestException('Rol no valido. Use CLIENTE, RECEPCIONISTA o VETERINARIO');
     }
 
-    // Verificar que el correo no este registrado
-    const existe = await this.pool.query(
-      `SELECT 1 FROM usuario WHERE correo = $1 LIMIT 1`,
-      [correo],
-    );
-    if (existe.rowCount > 0) {
+    const existe = await this.prisma.usuario.findFirst({
+      where: { correo: correo.toLowerCase() }
+    });
+    
+    if (existe) {
       throw new ConflictException('Ya existe un usuario con ese correo');
     }
 
-    // Hashear contrasena
     const contrasenaHasheada = await bcrypt.hash(contrasena, 10);
-
-    // Generar codigo de verificacion de 6 digitos con expiracion de 15 minutos
-    const codigoVerificacion = Math.floor(
-      100000 + Math.random() * 900000,
-    ).toString();
+    const codigoVerificacion = Math.floor(100000 + Math.random() * 900000).toString();
     const codigoExpiracion = new Date(Date.now() + 15 * 60 * 1000);
 
-    // Insertar usuario en BD con estado pendiente_verificacion
-    const {
-      rows: [usuario],
-    } = await this.pool.query(
-      `INSERT INTO usuario
-        (nombre, apellido, correo, contrasena, rol, telefono, estado, codigo_verificacion, codigo_verificacion_expira_en)
-       VALUES ($1, $2, $3, $4, $5, $6, 'pendiente_verificacion', $7, $8)
-       RETURNING codigo, nombre, apellido, correo, rol, telefono, estado, creado_en`,
-      [
+    const usuario = await this.prisma.usuario.create({
+      data: {
         nombre,
         apellido,
-        correo.toLowerCase(),
-        contrasenaHasheada,
-        rolNormalizado,
+        correo: correo.toLowerCase(),
+        contrasena: contrasenaHasheada,
+        rol: rolNormalizado,
         telefono,
-        codigoVerificacion,
-        codigoExpiracion,
-      ],
-    );
+        estado: 'pendiente_verificacion',
+        codigo_verificacion: codigoVerificacion,
+        codigo_verificacion_expira_en: codigoExpiracion,
+      }
+    });
 
-    // Enviar correo con codigo de verificacion (no bloquea el registro si falla)
     try {
       await this.mailService.sendVerificationCode(usuario.correo, codigoVerificacion);
     } catch {
       console.error(`No se pudo enviar el correo de verificacion a ${usuario.correo}`);
     }
 
-    // Emitir evento de auditoria
     this.auditService.emit({
       action: 'REGISTRO_DE_USUARIO',
       userId: usuario.codigo,
@@ -176,66 +140,36 @@ export class AuthService {
     };
   }
 
-  /**
-   * Verifica el codigo de verificacion ingresado por el usuario para activar su cuenta.
-   * - Valida que correo y codigo sean obligatorios y sin espacios
-   * - Valida formato de correo y longitud maxima de 70 caracteres
-   * - Valida que el codigo sea exactamente 6 digitos numericos
-   * - Busca el usuario por correo en la base de datos
-   * - Verifica que la cuenta no este activa, rechazada ni suspendida
-   * - Verifica que haya un codigo activo en BD (caso defensivo)
-   * - Verifica que el codigo coincida con el almacenado en BD
-   * - Verifica que el codigo no haya expirado (expira a los 15 minutos)
-   * - Actualiza el estado segun el rol: CLIENTE -> activo, RECEPCIONISTA/VETERINARIO -> pendiente_aprobacion
-   * - Limpia el codigo de verificacion de la BD
-   * - Emite evento de auditoria VERIFICACION_CORREO
-   *
-   * @param body - { correo, codigo }
-   * @returns Mensaje de exito y estado de la cuenta
-   */
   async verifyEmail(body: any) {
     const { correo, codigo } = body;
 
-    // Validacion de campos obligatorios
     if (!correo || !codigo) {
       throw new BadRequestException('El correo y el codigo son obligatorios');
     }
-
-    // Validacion: ningun campo puede contener espacios
     if (/\s/.test(correo)) throw new BadRequestException('El correo no puede contener espacios');
     if (/\s/.test(codigo)) throw new BadRequestException('El codigo no puede contener espacios');
 
-    // Validacion de formato de correo
     const regexCorreo = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!regexCorreo.test(correo)) {
       throw new BadRequestException('El correo debe tener un formato valido. Ejemplo: usuario@correo.com');
     }
-
-    // Validacion de longitud maxima del correo
     if (correo.length > 70) {
       throw new BadRequestException('El correo no puede tener mas de 70 caracteres');
     }
 
-    // Validacion del codigo: exactamente 6 digitos numericos
     const regexCodigo = /^\d{6}$/;
     if (!regexCodigo.test(codigo)) {
       throw new BadRequestException('El codigo debe ser exactamente 6 digitos numericos');
     }
 
-    // Buscar usuario por correo
-    const { rows } = await this.pool.query(
-      `SELECT codigo, correo, rol, estado, codigo_verificacion, codigo_verificacion_expira_en
-       FROM usuario WHERE correo = $1 LIMIT 1`,
-      [correo.toLowerCase()],
-    );
+    const usuario = await this.prisma.usuario.findFirst({
+      where: { correo: correo.toLowerCase() }
+    });
 
-    if (rows.length === 0) {
+    if (!usuario) {
       throw new NotFoundException('No existe un usuario con ese correo');
     }
 
-    const usuario = rows[0];
-
-    // Verificar el estado actual de la cuenta
     if (usuario.estado === 'activo') {
       throw new BadRequestException('Esta cuenta ya fue verificada anteriormente');
     }
@@ -246,37 +180,28 @@ export class AuthService {
       throw new BadRequestException('Esta cuenta esta suspendida. Contacta al administrador');
     }
 
-    // Verificar que el codigo no sea nulo en BD (caso defensivo)
     if (!usuario.codigo_verificacion) {
       throw new BadRequestException('No hay un codigo de verificacion activo para esta cuenta');
     }
-
-    // Verificar que el codigo coincida con el almacenado en BD
     if (usuario.codigo_verificacion !== codigo) {
       throw new BadRequestException('El codigo de verificacion es incorrecto');
     }
-
-    // Verificar que el codigo no haya expirado
-    if (new Date() > new Date(usuario.codigo_verificacion_expira_en)) {
+    if (usuario.codigo_verificacion_expira_en && new Date() > new Date(usuario.codigo_verificacion_expira_en)) {
       throw new BadRequestException('El codigo de verificacion ha expirado. Registrate nuevamente para obtener uno nuevo');
     }
 
-    // Determinar nuevo estado segun el rol:
-    // CLIENTE -> activo, RECEPCIONISTA o VETERINARIO -> pendiente_aprobacion
     const rolesConAprobacion = ['RECEPCIONISTA', 'VETERINARIO'];
-    const nuevoEstado = rolesConAprobacion.includes(usuario.rol)
-      ? 'pendiente_aprobacion'
-      : 'activo';
+    const nuevoEstado = rolesConAprobacion.includes(usuario.rol) ? 'pendiente_aprobacion' : 'activo';
 
-    // Actualizar estado y limpiar el codigo de verificacion de la BD
-    await this.pool.query(
-      `UPDATE usuario
-       SET estado = $1, codigo_verificacion = NULL, codigo_verificacion_expira_en = NULL
-       WHERE correo = $2`,
-      [nuevoEstado, correo.toLowerCase()],
-    );
+    await this.prisma.usuario.update({
+      where: { codigo: usuario.codigo },
+      data: {
+        estado: nuevoEstado,
+        codigo_verificacion: null,
+        codigo_verificacion_expira_en: null,
+      }
+    });
 
-    // Emitir evento de auditoria
     this.auditService.emit({
       action: 'VERIFICACION_CORREO',
       userId: usuario.codigo,
@@ -286,7 +211,6 @@ export class AuthService {
       details: { correo: usuario.correo, estado: nuevoEstado },
     });
 
-    // Respuesta segun el rol
     if (nuevoEstado === 'pendiente_aprobacion') {
       return {
         mensaje: 'Correo verificado exitosamente. Tu cuenta esta pendiente de aprobacion por el administrador.',
@@ -300,71 +224,47 @@ export class AuthService {
     };
   }
 
-  /**
-   * Reenvía un nuevo codigo de verificacion al correo del usuario.
-   * - Valida que el correo sea obligatorio, sin espacios y con formato valido
-   * - Verifica que el usuario exista y este en estado pendiente_verificacion
-   * - Genera un nuevo codigo de 6 digitos con nueva expiracion de 15 minutos
-   * - Actualiza el codigo en BD y envia el correo
-   * - No emite auditoria (accion de soporte, no de negocio)
-   *
-   * @param body - { correo }
-   * @returns Mensaje de confirmacion de reenvio
-   */
   async resendVerification(body: any) {
     const { correo } = body;
 
-    // Validacion de campo obligatorio
     if (!correo) {
       throw new BadRequestException('El correo es obligatorio');
     }
-
-    // Validacion: no puede contener espacios
     if (/\s/.test(correo)) {
       throw new BadRequestException('El correo no puede contener espacios');
     }
 
-    // Validacion de formato de correo
     const regexCorreo = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!regexCorreo.test(correo)) {
       throw new BadRequestException('El correo debe tener un formato valido. Ejemplo: usuario@correo.com');
     }
-
-    // Validacion de longitud maxima del correo
     if (correo.length > 70) {
       throw new BadRequestException('El correo no puede tener mas de 70 caracteres');
     }
 
-    // Buscar usuario por correo
-    const { rows } = await this.pool.query(
-      `SELECT codigo, correo, rol, estado FROM usuario WHERE correo = $1 LIMIT 1`,
-      [correo.toLowerCase()],
-    );
+    const usuario = await this.prisma.usuario.findFirst({
+      where: { correo: correo.toLowerCase() }
+    });
 
-    if (rows.length === 0) {
+    if (!usuario) {
       throw new NotFoundException('No existe un usuario con ese correo');
     }
 
-    const usuario = rows[0];
-
-    // Solo se puede reenviar si la cuenta esta pendiente de verificacion
     if (usuario.estado !== 'pendiente_verificacion') {
       throw new BadRequestException('Solo se puede reenviar el codigo a cuentas pendientes de verificacion');
     }
 
-    // Generar nuevo codigo de 6 digitos con nueva expiracion de 15 minutos
     const nuevoCodigo = Math.floor(100000 + Math.random() * 900000).toString();
     const nuevaExpiracion = new Date(Date.now() + 15 * 60 * 1000);
 
-    // Actualizar el codigo en BD
-    await this.pool.query(
-      `UPDATE usuario
-       SET codigo_verificacion = $1, codigo_verificacion_expira_en = $2
-       WHERE correo = $3`,
-      [nuevoCodigo, nuevaExpiracion, correo.toLowerCase()],
-    );
+    await this.prisma.usuario.update({
+      where: { codigo: usuario.codigo },
+      data: {
+        codigo_verificacion: nuevoCodigo,
+        codigo_verificacion_expira_en: nuevaExpiracion,
+      }
+    });
 
-    // Enviar nuevo correo con el codigo (no bloquea si falla)
     try {
       await this.mailService.sendVerificationCode(usuario.correo, nuevoCodigo);
     } catch {
@@ -376,29 +276,12 @@ export class AuthService {
     };
   }
 
-  /**
-   * Inicia sesion de un usuario con correo y contrasena.
-   * - Valida que correo y contrasena sean obligatorios y sin espacios
-   * - Valida formato de correo y longitud maxima de 70 caracteres
-   * - Busca el usuario por correo en la base de datos
-   * - Verifica que la cuenta este en estado activo (bloquea y registra en auditoria si no lo esta)
-   * - Verifica la contrasena con bcrypt
-   * - Genera un token JWT con el codigo, correo y rol del usuario
-   * - Emite evento de auditoria INICIO_DE_SESION_EXITOSO si las credenciales son correctas
-   * - Emite evento de auditoria INTENTO_DE_SESION_FALLIDO si las credenciales son incorrectas
-   *
-   * @param body - { correo, contrasena }
-   * @returns Token JWT y datos basicos del usuario
-   */
   async login(body: any) {
     const { correo, contrasena } = body;
 
-    // Validacion de campos obligatorios
     if (!correo || !contrasena) {
       throw new BadRequestException('El correo y la contrasena son obligatorios');
     }
-
-    // Validacion: ningun campo puede contener espacios
     if (/\s/.test(correo)) {
       throw new BadRequestException('El correo no puede contener espacios');
     }
@@ -406,26 +289,19 @@ export class AuthService {
       throw new BadRequestException('La contrasena no puede contener espacios');
     }
 
-    // Validacion de formato de correo
     const regexCorreo = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!regexCorreo.test(correo)) {
       throw new BadRequestException('El correo debe tener un formato valido. Ejemplo: usuario@correo.com');
     }
-
-    // Validacion de longitud maxima del correo
     if (correo.length > 70) {
       throw new BadRequestException('El correo no puede tener mas de 70 caracteres');
     }
 
-    // Buscar usuario por correo
-    const { rows } = await this.pool.query(
-      `SELECT codigo, nombre, apellido, correo, contrasena, rol, estado
-       FROM usuario WHERE correo = $1 LIMIT 1`,
-      [correo.toLowerCase()],
-    );
+    const usuario = await this.prisma.usuario.findFirst({
+      where: { correo: correo.toLowerCase() }
+    });
 
-    if (rows.length === 0) {
-      // Emitir evento de auditoria de intento fallido (usuario no existe)
+    if (!usuario) {
       this.auditService.emit({
         action: 'INTENTO_DE_SESION_FALLIDO',
         userId: null,
@@ -437,9 +313,6 @@ export class AuthService {
       throw new UnauthorizedException('Credenciales incorrectas');
     }
 
-    const usuario = rows[0];
-
-    // Verificar estado de la cuenta y registrar intento si esta bloqueada
     const estadosBloqueados: Record<string, string> = {
       pendiente_verificacion: 'Debes verificar tu correo antes de iniciar sesion',
       pendiente_aprobacion: 'Tu cuenta esta pendiente de aprobacion por el administrador',
@@ -449,7 +322,6 @@ export class AuthService {
     };
 
     if (estadosBloqueados[usuario.estado]) {
-      // Emitir evento de auditoria de acceso bloqueado
       this.auditService.emit({
         action: 'INTENTO_DE_SESION_FALLIDO',
         userId: usuario.codigo,
@@ -461,10 +333,8 @@ export class AuthService {
       throw new UnauthorizedException(estadosBloqueados[usuario.estado]);
     }
 
-    // Verificar contrasena con bcrypt
     const contrasenaValida = await bcrypt.compare(contrasena, usuario.contrasena);
     if (!contrasenaValida) {
-      // Emitir evento de auditoria de intento fallido (contrasena incorrecta)
       this.auditService.emit({
         action: 'INTENTO_DE_SESION_FALLIDO',
         userId: usuario.codigo,
@@ -476,7 +346,6 @@ export class AuthService {
       throw new UnauthorizedException('Credenciales incorrectas');
     }
 
-    // Generar token JWT con codigo, correo y rol
     const payload = {
       sub: usuario.codigo,
       correo: usuario.correo,
@@ -484,7 +353,6 @@ export class AuthService {
     };
     const token = this.jwtService.sign(payload);
 
-    // Emitir evento de auditoria
     this.auditService.emit({
       action: 'INICIO_DE_SESION_EXITOSO',
       userId: usuario.codigo,
