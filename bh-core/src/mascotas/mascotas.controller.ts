@@ -24,4 +24,9 @@ export class MascotasController {
   registrarPeso(@Param('id') id: string, @Body() body: any) {
     return this.mascotasService.registrarPeso(id.trim(), body);
   }
+
+  @Patch(':id/hospitalizar')
+  hospitalizarMascota(@Param('id') id: string) {
+    return this.mascotasService.hospitalizarMascota(id.trim());
+  }
 }
