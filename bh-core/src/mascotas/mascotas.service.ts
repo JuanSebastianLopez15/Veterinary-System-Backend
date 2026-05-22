@@ -1,5 +1,4 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { Pool } from 'pg';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';import { Pool } from 'pg';
 import { DATABASE_POOL } from '../database/database.provider';
 
 @Injectable()
@@ -28,6 +27,21 @@ export class MascotasService {
        RETURNING codigo, nombre, especie, raza, color, fecha_nacimiento, peso, estado`,
       [clienteCodigo, nombre, especie, raza, color, fechaNacimiento, peso],
     );
+
+    return mascota;
+  }
+
+  async consultarMascotaPorId(id: string) {
+    const { rows: [mascota] } = await this.pool.query(
+      `SELECT codigo, cliente_codigo, nombre, especie, raza, color, fecha_nacimiento, peso, estado
+       FROM mascotas
+       WHERE codigo = $1`,
+      [id.trim()],
+    );
+
+    if (!mascota) {
+      throw new NotFoundException('Mascota no encontrada');
+    }
 
     return mascota;
   }

@@ -1,4 +1,4 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { MascotasService } from './mascotas.service';
 
 @Controller('mascotas')
@@ -8,5 +8,10 @@ export class MascotasController {
   @Post()
   registrarMascota(@Body() body: any) {
     return this.mascotasService.registrarMascota(body);
+  }
+
+  @Get(':id')
+  consultarMascotaPorId(@Param('id') id: string) {
+    return this.mascotasService.consultarMascotaPorId(id);
   }
 }
