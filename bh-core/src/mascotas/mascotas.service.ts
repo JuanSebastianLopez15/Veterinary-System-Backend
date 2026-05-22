@@ -118,4 +118,26 @@ export class MascotasService {
 
     return { mensaje: 'Mascota hospitalizada exitosamente' };
   }
+
+  async registrarFallecimiento(id: string) {
+    const { rows: [mascota] } = await this.pool.query(
+      `SELECT codigo, estado FROM mascotas WHERE codigo = $1`,
+      [id],
+    );
+
+    if (!mascota) {
+      throw new NotFoundException('Mascota no encontrada');
+    }
+
+    if (mascota.estado === 'fallecida') {
+      throw new BadRequestException('La mascota ya está registrada como fallecida');
+    }
+
+    await this.pool.query(
+      `UPDATE mascotas SET estado = 'fallecida' WHERE codigo = $1`,
+      [id],
+    );
+
+    return { mensaje: 'Fallecimiento registrado exitosamente' };
+  }
 }
