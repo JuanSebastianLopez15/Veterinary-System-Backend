@@ -72,4 +72,28 @@ export class MascotasService {
 
     return { mensaje: 'Mascota actualizada exitosamente' };
   }
+
+  async registrarPeso(id: string, body: any) {
+    const { peso } = body;
+
+    if (!peso) {
+      throw new BadRequestException('El peso es obligatorio');
+    }
+
+    const { rows: [mascota] } = await this.pool.query(
+      `SELECT codigo FROM mascotas WHERE codigo = $1`,
+      [id],
+    );
+
+    if (!mascota) {
+      throw new NotFoundException('Mascota no encontrada');
+    }
+
+    await this.pool.query(
+      `UPDATE mascotas SET peso = $1 WHERE codigo = $2`,
+      [peso, id],
+    );
+
+    return { mensaje: 'Peso registrado exitosamente' };
+  }
 }

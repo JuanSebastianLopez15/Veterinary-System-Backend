@@ -19,4 +19,9 @@ export class MascotasController {
   actualizarMascota(@Param('id') id: string, @Body() body: any) {
     return this.mascotasService.actualizarMascota(id.trim(), body);
   }
+
+  @Patch(':id/peso')
+  registrarPeso(@Param('id') id: string, @Body() body: any) {
+    return this.mascotasService.registrarPeso(id.trim(), body);
+  }
 }
