@@ -29,4 +29,9 @@ export class MascotasController {
   hospitalizarMascota(@Param('id') id: string) {
     return this.mascotasService.hospitalizarMascota(id.trim());
   }
+
+  @Patch(':id/fallecida')
+  registrarFallecimiento(@Param('id') id: string) {
+    return this.mascotasService.registrarFallecimiento(id.trim());
+  }
 }
