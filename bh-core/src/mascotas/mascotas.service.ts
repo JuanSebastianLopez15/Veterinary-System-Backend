@@ -96,4 +96,26 @@ export class MascotasService {
 
     return { mensaje: 'Peso registrado exitosamente' };
   }
+
+  async hospitalizarMascota(id: string) {
+    const { rows: [mascota] } = await this.pool.query(
+      `SELECT codigo, estado FROM mascotas WHERE codigo = $1`,
+      [id],
+    );
+
+    if (!mascota) {
+      throw new NotFoundException('Mascota no encontrada');
+    }
+
+    if (mascota.estado !== 'activa') {
+      throw new BadRequestException('Solo se puede hospitalizar una mascota con estado activa');
+    }
+
+    await this.pool.query(
+      `UPDATE mascotas SET estado = 'hospitalizada' WHERE codigo = $1`,
+      [id],
+    );
+
+    return { mensaje: 'Mascota hospitalizada exitosamente' };
+  }
 }
