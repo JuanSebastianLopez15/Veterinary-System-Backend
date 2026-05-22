@@ -4,6 +4,8 @@ import {
   Controller,
   Get,
   Headers,
+  Param,
+  Patch,
   Post,
   Query,
 } from '@nestjs/common';
@@ -13,6 +15,8 @@ import {
   CreateAppointmentRequest,
   CreateClientAppointmentRequest,
   CreatedAppointmentResponse,
+  DailyAgendaAppointmentResponse,
+  CompletedAppointmentResponse,
 } from './appointments.service';
 
 @Controller('appointments')
@@ -37,6 +41,17 @@ export class AppointmentsController {
     );
   }
 
+  @Patch(':codigo/complete')
+  async completeAppointment(
+    @Param('codigo') codigo: string,
+    @Headers('x-user-code') authenticatedUserCode: string | undefined,
+  ): Promise<CompletedAppointmentResponse> {
+    return this.appointmentsService.completeAppointment(
+      codigo,
+      authenticatedUserCode,
+    );
+  }
+
   @Get('availability')
   async validateAvailability(
     @Query('usuarioCodigo') usuarioCodigo: string,
@@ -54,5 +69,17 @@ export class AppointmentsController {
     );
 
     return { disponible };
+  }
+
+  @Get('daily-agenda')
+  async findDailyAgenda(
+    @Query('veterinarioCodigo') veterinarioCodigo: string,
+    @Query('fecha') fecha: string,
+  ): Promise<DailyAgendaAppointmentResponse[]> {
+    if (!veterinarioCodigo || !fecha) {
+      throw new BadRequestException('veterinarioCodigo y fecha son obligatorios');
+    }
+
+    return this.appointmentsService.findDailyAgenda(veterinarioCodigo, fecha);
   }
 }
