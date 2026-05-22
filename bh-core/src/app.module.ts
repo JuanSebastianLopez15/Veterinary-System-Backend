@@ -1,33 +1,28 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { ConfigModule } from '@nestjs/config';
 
 import { AppointmentsModule } from './appointments/appointments.module';
-import { DatabaseModule } from './database/database.module';
-import { MedicalHistoryModule } from './medical-history/medical-history.module';
+import { AuthModule } from './auth/auth.module';
 import { ClientesModule } from './clientes/clientes.module';
+import { DatabaseModule } from './database/database.module';
+import { InventoryModule } from './inventory/inventory.module';
+import { MedicalRecordsModule } from './medical-records/medical-records.module';
+import { ServicesModule } from './services/services.module';
+import { UsersModule } from './users/users.module';
+import { MascotasModule } from './mascotas/mascotas.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    TypeOrmModule.forRootAsync({
-      imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        type: 'postgres',
-        host: configService.get<string>('DB_HOST', 'localhost'),
-        port: configService.get<number>('DB_PORT', 5432),
-        username: configService.get<string>('DB_USER', 'postgres'),
-        password: configService.get<string>('DB_PASSWORD', 'postgres'),
-        database: configService.get<string>('DB_NAME', 'veterinaria'),
-        entities: [__dirname + '/**/*.entity{.ts,.js}'],
-        synchronize: false,
-      }),
-      inject: [ConfigService],
-    }),
     DatabaseModule,
+    AuthModule,
     AppointmentsModule,
-    MedicalHistoryModule,
     ClientesModule,
+    InventoryModule,
+    ServicesModule,
+    MedicalRecordsModule,
+    UsersModule,
+    MascotasModule,
   ],
   controllers: [],
   providers: [],
