@@ -13,6 +13,7 @@ import { ServicesModule } from './services/services.module';
 import { UsersModule } from './users/users.module';
 import { MascotasModule } from './mascotas/mascotas.module';
 import { ReportesPdfModule } from './reportesPDF/reportes-pdf.module';
+import { FacturacionModule } from './facturacion/facturacion.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { ReportesPdfModule } from './reportesPDF/reportes-pdf.module';
     UsersModule,
     MascotasModule,
     ReportesPdfModule,
+    FacturacionModule,
   ],
   controllers: [],
   providers: [],
