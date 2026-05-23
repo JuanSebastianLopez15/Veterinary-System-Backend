@@ -1,4 +1,4 @@
-import { IsObject, IsOptional, IsString } from 'class-validator';
+import {IsDateString, IsObject, IsOptional, IsString} from 'class-validator';
 
 /**
  * DTO encargado de validar los eventos
@@ -50,4 +50,8 @@ export class CreateAuditEventDto {
     @IsOptional()
     @IsString()
     ipAddress?: string;
+
+    @IsOptional()
+    @IsDateString()
+    timestamp?: string;
 }
