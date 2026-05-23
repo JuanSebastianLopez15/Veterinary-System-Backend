@@ -10,6 +10,7 @@ import { MedicalRecordsModule } from './medical-records/medical-records.module';
 import { ServicesModule } from './services/services.module';
 import { UsersModule } from './users/users.module';
 import { MascotasModule } from './mascotas/mascotas.module';
+import { ReportesPdfModule } from './reportesPDF/reportes-pdf.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { MascotasModule } from './mascotas/mascotas.module';
     MedicalRecordsModule,
     UsersModule,
     MascotasModule,
+    ReportesPdfModule,
   ],
   controllers: [],
   providers: [],
