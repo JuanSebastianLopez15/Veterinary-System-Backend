@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsUUID, IsIn, IsObject, IsNotEmpty, IsIP } from 'class-validator';
+import { IsString, IsOptional, IsUUID, IsIn, IsObject, IsNotEmpty, IsDateString } from 'class-validator';
 
 export class CreateAuditEventDto {
   @IsString()
@@ -38,7 +38,12 @@ export class CreateAuditEventDto {
   @IsNotEmpty()
   details: Record<string, any>;
 
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
-  ipAddress: string;
+  ipAddress?: string;
+
+  @IsOptional()
+  @IsDateString()
+  timestamp?: string;
 }

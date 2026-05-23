@@ -270,7 +270,16 @@ export class AuthService {
     } catch {
       console.error(`No se pudo reenviar el correo de verificacion a ${usuario.correo}`);
     }
-
+    this.auditService.emit({
+      action: 'REENVIO_CODIGO_VERIFICACION',
+      userId: usuario.codigo,
+      userRole: usuario.rol,
+      entityType: 'Usuario',
+      entityId: usuario.codigo,
+      details: {
+        correo: usuario.correo,
+      },
+    });
     return {
       mensaje: 'Se ha enviado un nuevo codigo de verificacion a tu correo. Expira en 15 minutos.',
     };

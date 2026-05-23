@@ -42,9 +42,13 @@ export class ServicesService {
         precio: data.price,
         estado: 'activo',
       },
+
+
     });
-    
+
+
     const created = this.mapRow(row);
+
 
     this.auditService.emit({
       action: 'CREACION_SERVICIO',
@@ -59,6 +63,7 @@ export class ServicesService {
       },
       ipAddress,
     });
+
 
     return created;
   }

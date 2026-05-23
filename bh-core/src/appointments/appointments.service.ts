@@ -219,6 +219,8 @@ export class AppointmentsService {
       },
     });
 
+
+
     this.auditService.emit({
       action: 'PAGO_CITA_REGISTRADO',
       userId: null,
@@ -372,6 +374,18 @@ export class AppointmentsService {
     const updated = await this.prisma.cita.update({
       where: { codigo: appointmentCode },
       data: { estado: 'completada' },
+    });
+
+    this.auditService.emit({
+      action: 'CANCELACION_CITA',
+      userId: userCode,
+      userRole: 'veterinario',
+      entityType: 'Appointment',
+      entityId: appointmentCode,
+      details: {
+        estadoAnterior: appointment.estado,
+        estadoNuevo: 'cancelada',
+      },
     });
 
     const completedAppointment: CompletedAppointmentResponse = {
