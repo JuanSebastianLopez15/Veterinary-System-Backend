@@ -30,6 +30,7 @@
     "@prisma/adapter-pg": "^7.8.0",
     "@types/bcrypt": "^6.0.0",
     "bcrypt": "^6.0.0",
+    "class-validator": "^0.15.1",
     "node-pg-migrate": "^8.0.4",
     "nodemailer": "^8.0.7",
     "passport": "^0.7.0",
