@@ -2,7 +2,7 @@ import { Entity, Column, PrimaryColumn, OneToMany } from 'typeorm';
 import { PrescribedMedication } from './prescribed-medication.entity';
 import { Vaccine } from './vaccine.entity';
 
-@Entity('Historial_Medico')
+@Entity('historial_medico')
 export class MedicalHistory {
   @PrimaryColumn()
   codigo: string;

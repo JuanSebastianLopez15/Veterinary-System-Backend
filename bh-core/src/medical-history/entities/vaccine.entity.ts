@@ -1,7 +1,7 @@
 import { Entity, Column, PrimaryColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { MedicalHistory } from './medical-history.entity';
 
-@Entity('Vacuna')
+@Entity('vacuna')
 export class Vaccine {
   @PrimaryColumn()
   codigo: string;

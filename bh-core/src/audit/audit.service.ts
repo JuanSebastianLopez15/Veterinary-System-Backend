@@ -31,4 +31,15 @@ export class AuditService {
       this.logger.warn(`Audit event could not be sent: ${err.message}`);
     });
   }
+
+  async log(data: { accion: string; usuarioCodigo: string | null; rol: string | null; detalle: string }): Promise<void> {
+    this.emit({
+      action: data.accion,
+      userId: data.usuarioCodigo,
+      userRole: data.rol,
+      entityType: 'MEDICAL_HISTORY',
+      entityId: null,
+      details: { message: data.detalle },
+    });
+  }
 }

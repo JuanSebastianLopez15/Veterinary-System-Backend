@@ -1,50 +1,59 @@
-import { Controller, Post, Body, Param, Headers, Patch, Get, Query } from '@nestjs/common';
+import { Controller, Post, Body, Param, Req, UseGuards, Patch, Get, UsePipes, ValidationPipe } from '@nestjs/common';
 import { MedicalHistoryService } from './medical-history.service';
 import { CreateMedicalHistoryDto } from './dto/create-medical-history.dto';
 import { EditMedicalHistoryDto } from './dto/edit-medical-history.dto';
 import { CreateVaccineDto } from './dto/create-vaccine.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 
 @Controller('appointments')
 export class MedicalHistoryController {
   constructor(private readonly service: MedicalHistoryService) {}
 
   @Post(':citaId/medical-history')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('VETERINARIO')
   create(
     @Param('citaId') citaId: string,
-    @Headers('x-veterinario-codigo') veterinarianCode: string,
     @Body() dto: CreateMedicalHistoryDto,
+    @Req() req: any,
   ) {
-    return this.service.create(citaId, dto, veterinarianCode);
+    return this.service.create(citaId, dto, req.user.codigo);
   }
 
   @Patch(':citaId/medical-history')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('VETERINARIO')
   edit(
     @Param('citaId') citaId: string,
-    @Headers('x-veterinario-codigo') veterinarianCode: string,
     @Body() dto: EditMedicalHistoryDto,
+    @Req() req: any,
   ) {
-    return this.service.edit(citaId, dto, veterinarianCode);
+    return this.service.edit(citaId, dto, req.user.codigo);
   }
 
   @Get('vaccines/upcoming')
-  getUpcomingVaccines(
-    @Headers('x-veterinario-codigo') veterinarianCode: string,
-    @Headers('x-recepcionista-codigo') recepcionistaCode: string,
-  ) {
-    // Either veterinarian or recepcionista can access this endpoint
-    const userCode = veterinarianCode || recepcionistaCode;
-    if (!userCode) {
-      throw new Error('Unauthorized');
-    }
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('VETERINARIO', 'RECEPCIONISTA')
+  getUpcomingVaccines() {
     return this.service.getUpcomingVaccines();
   }
+}
 
-  @Post('medical-history/:historialId/vaccines')
-  registerVaccine(
+@Controller('medical-history')
+@UsePipes(new ValidationPipe({ whitelist: true }))
+export class VaccineController {
+  constructor(private readonly service: MedicalHistoryService) {}
+
+  @Post(':historialId/vaccines')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('VETERINARIO')
+  addVaccine(
     @Param('historialId') historialId: string,
-    @Headers('x-veterinario-codigo') veterinarianCode: string,
+    @Req() req: any,
     @Body() dto: CreateVaccineDto,
   ) {
-    return this.service.registerVaccine(historialId, dto, veterinarianCode);
+    return this.service.addVaccine(historialId, dto, req.user.codigo);
   }
 }

@@ -108,16 +108,11 @@ export class MedicalHistoryService {
 
       await queryRunner.commitTransaction();
 
-      this.auditService.notifyEvent({
-        eventType: 'CREACION_HISTORIAL_MEDICO',
-        payload: {
-          historial: {
-            codigo: historialCodigo,
-            citaCodigo,
-            mascotaCodigo: cita[0].mascota_codigo,
-            veterinarianCode,
-          },
-        },
+      this.auditService.log({
+        accion: 'CREACION_HISTORIAL_MEDICO',
+        usuarioCodigo: veterinarianCode,
+        rol: 'veterinario',
+        detalle: `Historial creado para cita ${citaCodigo}`,
       }).catch(() => {});
 
       return { mensaje: 'Historial médico registrado exitosamente', codigo: historialCodigo };
@@ -162,14 +157,11 @@ export class MedicalHistoryService {
       
       await queryRunner.commitTransaction();
       
-      this.auditService.notifyEvent({
-        eventType: 'EDICION_HISTORIAL_MEDICO',
-        payload: {
-          historial: {
-            codigo: historial.codigo,
-            citaCodigo,
-          },
-        },
+      this.auditService.log({
+        accion: 'EDICION_HISTORIAL_MEDICO',
+        usuarioCodigo: veterinarianCode,
+        rol: 'veterinario',
+        detalle: `Historial editado para cita ${citaCodigo}`,
       }).catch(() => {});
       
       return { mensaje: 'Historial médico editado exitosamente' };
@@ -197,7 +189,7 @@ export class MedicalHistoryService {
     return vaccines;
   }
 
-  async registerVaccine(historialId: string, dto: CreateVaccineDto, veterinarianCode: string) {
+  async addVaccine(historialId: string, dto: CreateVaccineDto, veterinarioCodigo: string) {
     // 1. Verificar que el historial existe con ese codigo
     const historial = await this.historialRepo.findOne({ where: { codigo: historialId } });
     if (!historial) {
@@ -205,7 +197,7 @@ export class MedicalHistoryService {
     }
     
     // 2. Verificar que el historial pertenece al veterinario autenticado
-    if (historial.veterinarioCodigo !== veterinarianCode) {
+    if (historial.veterinarioCodigo !== veterinarioCodigo) {
       throw new ForbiddenException('No tienes permiso sobre este historial');
     }
     
@@ -224,13 +216,11 @@ export class MedicalHistoryService {
     await this.vacunaRepo.save(vaccine);
     
     // 4. Notificar a AuditService (fire-and-forget)
-    this.auditService.notifyEvent({
-      eventType: 'REGISTRO_VACUNA',
-      payload: {
-        usuarioCodigo: veterinarianCode,
-        rol: 'veterinario',
-        detalle: `Vacuna registrada en historial ${historialId}`,
-      },
+    this.auditService.log({
+      accion: 'REGISTRO_VACUNA',
+      usuarioCodigo: veterinarioCodigo,
+      rol: 'veterinario',
+      detalle: `Vacuna registrada en historial ${historialId}`,
     }).catch(() => {});
     
     return { mensaje: 'Vacuna registrada exitosamente', codigo: vaccineCodigo };
