@@ -34,7 +34,7 @@ export class MedicalHistoryService {
 
   async create(citaCodigo: string, dto: CreateMedicalHistoryDto, veterinarianCode: string) {
     const cita = await this.dataSource.query(
-      `SELECT * FROM "Cita" WHERE codigo = $1`,
+      `SELECT * FROM "cita" WHERE codigo = $1`,
       [citaCodigo]
     );
     if (!cita.length) throw new NotFoundException('Cita no encontrada');
@@ -111,7 +111,7 @@ export class MedicalHistoryService {
       }
 
       await queryRunner.manager.query(
-        `UPDATE "Mascotas" SET peso = $1 WHERE codigo = $2`,
+        `UPDATE "mascotas" SET peso = $1 WHERE codigo = $2`,
         [dto.peso_mascota, cita[0].mascota_codigo]
       );
 
@@ -182,20 +182,69 @@ export class MedicalHistoryService {
     }
   }
   
-    async getUpcomingVaccines() {
-    const thirtyDaysFromNow = new Date();
-    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
-    
-    const vaccines = await this.dataSource.query(
-      `SELECT v.codigo, v.nombre, v."fecha_siguiente_vacuna", v."mascota_codigo", v."historial_codigo" 
-       FROM "Vacuna" v 
-       WHERE v."fecha_siguiente_vacuna" >= CURRENT_DATE 
-         AND v."fecha_siguiente_vacuna" <= $1
-         AND v."fecha_siguiente_vacuna" IS NOT NULL`,
-      [thirtyDaysFromNow]
-    );
-    
-    return vaccines;
+    async getUpcomingVaccines(dias: number = 30) {
+    const fechaHoy = new Date();
+    const fechaLimite = new Date();
+    fechaLimite.setDate(fechaHoy.getDate() + dias);
+
+    // We use getRawMany because Cliente and Usuario are Prisma models, not TypeORM entities.
+    // This allows us to join them natively without duplicating entity definitions.
+    const rawResults = await this.vacunaRepo
+      .createQueryBuilder('vacuna')
+      .select([
+        'vacuna.codigo AS v_codigo',
+        'vacuna.nombre AS v_nombre',
+        'vacuna.fecha AS v_fecha',
+        'vacuna.fecha_siguiente_vacuna AS v_fecha_siguiente',
+        'mascota.codigo AS m_codigo',
+        'mascota.nombre AS m_nombre',
+        'mascota.especie AS m_especie',
+        'usuario.nombre AS u_nombre',
+        'usuario.apellido AS u_apellido',
+        'usuario.correo AS u_correo',
+        'usuario.telefono AS u_telefono',
+      ])
+      .innerJoin('mascotas', 'mascota', 'vacuna.mascota_codigo = mascota.codigo')
+      .innerJoin('cliente', 'cliente', 'mascota.cliente_codigo = cliente.codigo')
+      .innerJoin('usuario', 'usuario', 'cliente.usuario_codigo = usuario.codigo')
+      .where('vacuna.fecha_siguiente_vacuna >= :hoy', { hoy: fechaHoy })
+      .andWhere('vacuna.fecha_siguiente_vacuna <= :limite', { limite: fechaLimite })
+      .andWhere('mascota.estado != :estado', { estado: 'fallecida' })
+      .orderBy('vacuna.fecha_siguiente_vacuna', 'ASC')
+      .getRawMany();
+
+    const vacunas = rawResults.map((row) => {
+      const formatIso = (date: Date | string) => {
+        if (!date) return '';
+        const d = typeof date === 'string' ? new Date(date) : date;
+        return d.toISOString().split('T')[0];
+      };
+
+      return {
+        vacuna: {
+          codigo: row.v_codigo,
+          nombre: row.v_nombre,
+          fechaAplicacion: formatIso(row.v_fecha),
+          fechaProximaDosis: formatIso(row.v_fecha_siguiente),
+        },
+        mascota: {
+          codigo: row.m_codigo,
+          nombre: row.m_nombre,
+          especie: row.m_especie,
+        },
+        cliente: {
+          nombre: `${row.u_nombre} ${row.u_apellido}`,
+          email: row.u_correo,
+          telefono: row.u_telefono,
+        },
+      };
+    });
+
+    return {
+      total: vacunas.length,
+      diasConsultados: dias,
+      vacunas,
+    };
   }
 
   async addVaccine(historialId: string, dto: CreateVaccineDto, veterinarioCodigo: string) {
