@@ -1,8 +1,9 @@
-import { Controller, Post, Body, Param, Req, UseGuards, Patch, Get, UsePipes, ValidationPipe } from '@nestjs/common';
+import { Controller, Post, Body, Param, Req, UseGuards, Patch, Get, UsePipes, ValidationPipe, Query } from '@nestjs/common';
 import { MedicalHistoryService } from './medical-history.service';
 import { CreateMedicalHistoryDto } from './dto/create-medical-history.dto';
 import { EditMedicalHistoryDto } from './dto/edit-medical-history.dto';
 import { CreateVaccineDto } from './dto/create-vaccine.dto';
+import { UpcomingVaccinesQueryDto } from './dto/upcoming-vaccines-query.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -36,8 +37,9 @@ export class MedicalHistoryController {
   @Get('vaccines/upcoming')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('VETERINARIO', 'RECEPCIONISTA')
-  getUpcomingVaccines() {
-    return this.service.getUpcomingVaccines();
+  @UsePipes(new ValidationPipe({ transform: true }))
+  getUpcomingVaccines(@Query() query: UpcomingVaccinesQueryDto) {
+    return this.service.getUpcomingVaccines(query.dias ?? 30);
   }
 
   @Get(':citaId/pet-history')
