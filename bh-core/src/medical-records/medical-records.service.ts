@@ -59,6 +59,26 @@ export class MedicalRecordsService {
       const stockAlerts: Array<{ productName: string; currentStock: number; minStock: number }> = [];
       const savedPrescriptions: PrescriptionInput[] = [];
 
+      await this.auditService.emit({
+        action: 'CREACION_HISTORIAL_MEDICO',
+        userId: data.veterinarianId,
+        userRole: 'VETERINARIO',
+        entityType: 'HISTORIAL_MEDICO',
+        entityId: recordId,
+        details: {
+          appointmentId,
+          petId,
+          veterinarianId: data.veterinarianId,
+          visitReason: data.visitReason,
+          diagnosis: data.diagnosis,
+          treatment: data.treatment,
+          petWeight: data.petWeight,
+          prescriptionsCount: savedPrescriptions.length,
+          stockAdjusted: savedPrescriptions.filter(p => p.inventoryProductId).length,
+          stockAlerts: stockAlerts.map(a => a.productName),
+        },
+      });
+
       for (const prescription of data.prescriptions ?? []) {
         const quantity = prescription.quantity ?? 1;
 
@@ -117,6 +137,26 @@ export class MedicalRecordsService {
         },
       });
 
+      await this.auditService.emit({
+        action: 'CREACION_HISTORIAL_MEDICO',
+        userId: data.veterinarianId,
+        userRole: 'VETERINARIO',
+        entityType: 'HISTORIAL_MEDICO',
+        entityId: recordId,
+        details: {
+          appointmentId,
+          petId,
+          veterinarianId: data.veterinarianId,
+          visitReason: data.visitReason,
+          diagnosis: data.diagnosis,
+          treatment: data.treatment,
+          petWeight: data.petWeight,
+          prescriptionsCount: savedPrescriptions.length,
+          stockAdjusted: savedPrescriptions.filter(p => p.inventoryProductId).length,
+          stockAlerts: stockAlerts.map(a => a.productName),
+        },
+      });
+
       return {
         id: recordId,
         appointmentId: record.cita_codigo,
@@ -136,5 +176,7 @@ export class MedicalRecordsService {
         ...(stockAlerts.length > 0 && { stockAlerts }),
       };
     });
+
+
   }
 }
