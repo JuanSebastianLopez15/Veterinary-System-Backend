@@ -1,9 +1,14 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';import { Pool } from 'pg';
+import {BadRequestException, Inject, Injectable, Module, NotFoundException} from '@nestjs/common';import { Pool } from 'pg';
 import { DATABASE_POOL } from '../database/database.provider';
-
+import { AuditService } from '../audit/audit.service';
+@Module({
+  providers: [MascotasService, AuditService],
+})
 @Injectable()
 export class MascotasService {
-  constructor(@Inject(DATABASE_POOL) private readonly pool: Pool) {}
+  constructor(@Inject(DATABASE_POOL) private readonly pool: Pool,
+              private readonly auditService: AuditService,
+  ) {}
 
   async registrarMascota(body: any) {
     const { clienteCodigo, nombre, especie, raza, color, fechaNacimiento, peso } = body;
@@ -27,6 +32,21 @@ export class MascotasService {
        RETURNING codigo, nombre, especie, raza, color, fecha_nacimiento, peso, estado`,
       [clienteCodigo, nombre, especie, raza, color, fechaNacimiento, peso],
     );
+
+    await this.auditService.emit({
+      action: 'CREAR_MASCOTA',
+      userId: clienteCodigo,
+      userRole: null,
+      entityType: 'MASCOTA',
+      entityId: mascota.codigo,
+      details: {
+        nombre,
+        especie,
+        raza,
+        color,
+        peso,
+      },
+    });
 
     return mascota;
   }
@@ -70,6 +90,22 @@ export class MascotasService {
       [nombre ?? null, especie ?? null, raza ?? null, color ?? null, fechaNacimiento ?? null, peso ?? null, id],
     );
 
+    await this.auditService.emit({
+      action: 'ACTUALIZAR_MASCOTA',
+      userId: id,
+      userRole: null,
+      entityType: 'MASCOTA',
+      entityId: id,
+      details: {
+        nombre,
+        especie,
+        raza,
+        color,
+        fechaNacimiento,
+        peso,
+      },
+    });
+
     return { mensaje: 'Mascota actualizada exitosamente' };
   }
 
@@ -94,6 +130,15 @@ export class MascotasService {
       [peso, id],
     );
 
+    await this.auditService.emit({
+      action: 'ACTUALIZAR_PESO_MASCOTA',
+      userId: id,
+      userRole: null,
+      entityType: 'MASCOTA',
+      entityId: id,
+      details: { peso },
+    });
+
     return { mensaje: 'Peso registrado exitosamente' };
   }
 
@@ -116,6 +161,15 @@ export class MascotasService {
       [id],
     );
 
+    await this.auditService.emit({
+      action: 'HOSPITALIZAR_MASCOTA',
+      userId: id,
+      userRole: null,
+      entityType: 'MASCOTA',
+      entityId: id,
+      details: { estado: 'hospitalizada' },
+    });
+
     return { mensaje: 'Mascota hospitalizada exitosamente' };
   }
 
@@ -137,6 +191,15 @@ export class MascotasService {
       `UPDATE mascotas SET estado = 'fallecida' WHERE codigo = $1`,
       [id],
     );
+
+    await this.auditService.emit({
+      action: 'FALLECIMIENTO_MASCOTA',
+      userId: id,
+      userRole: null,
+      entityType: 'MASCOTA',
+      entityId: id,
+      details: { estado: 'fallecida' },
+    });
 
     return { mensaje: 'Fallecimiento registrado exitosamente' };
   }

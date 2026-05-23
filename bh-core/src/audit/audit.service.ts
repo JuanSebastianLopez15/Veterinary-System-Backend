@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+//import { AuditAction } from '../audit/enums/audit-action.enum';
 
 interface AuditEventPayload {
   action: string;
@@ -19,17 +20,26 @@ export class AuditService {
   constructor(private readonly configService: ConfigService) {
     this.auditUrl =
       this.configService.get<string>('AUDIT_URL') ??
-      'http://bh-audit-service:3001/api/v1/audit/events';
+      'http://localhost:3001/api/v1/audit/events';
   }
 
-  emit(payload: AuditEventPayload): void {
-    fetch(this.auditUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    }).catch((err: Error) => {
-      this.logger.warn(`Audit event could not be sent: ${err.message}`);
-    });
+  async emit(payload: AuditEventPayload): Promise<void> {
+    try {
+      const response = await fetch(this.auditUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        this.logger.warn(
+            `Audit rejected (${response.status}): ${text}`,
+        );
+      }
+    } catch (err: any) {
+      this.logger.warn(`Audit event failed: ${err.message}`);
+    }
   }
 
   async log(data: { accion: string; usuarioCodigo: string | null; rol: string | null; detalle: string }): Promise<void> {
