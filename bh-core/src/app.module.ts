@@ -12,6 +12,7 @@ import { MedicalHistoryModule } from './medical-history/medical-history.module';
 import { ServicesModule } from './services/services.module';
 import { UsersModule } from './users/users.module';
 import { MascotasModule } from './mascotas/mascotas.module';
+import { ReportesPdfModule } from './reportesPDF/reportes-pdf.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { MascotasModule } from './mascotas/mascotas.module';
     MedicalHistoryModule,
     UsersModule,
     MascotasModule,
+    ReportesPdfModule,
   ],
   controllers: [],
   providers: [],
