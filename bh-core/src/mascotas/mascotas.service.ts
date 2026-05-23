@@ -1,5 +1,4 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { Pool } from 'pg';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';import { Pool } from 'pg';
 import { DATABASE_POOL } from '../database/database.provider';
 
 @Injectable()
@@ -30,5 +29,115 @@ export class MascotasService {
     );
 
     return mascota;
+  }
+
+  async consultarMascotaPorId(id: string) {
+    const { rows: [mascota] } = await this.pool.query(
+      `SELECT codigo, cliente_codigo, nombre, especie, raza, color, fecha_nacimiento, peso, estado
+       FROM mascotas
+       WHERE codigo = $1`,
+      [id.trim()],
+    );
+
+    if (!mascota) {
+      throw new NotFoundException('Mascota no encontrada');
+    }
+
+    return mascota;
+  }
+
+  async actualizarMascota(id: string, body: any) {
+    const { nombre, especie, raza, color, fechaNacimiento, peso } = body;
+
+    const { rows: [mascota] } = await this.pool.query(
+      `SELECT codigo FROM mascotas WHERE codigo = $1`,
+      [id],
+    );
+
+    if (!mascota) {
+      throw new NotFoundException('Mascota no encontrada');
+    }
+
+    await this.pool.query(
+      `UPDATE mascotas SET
+        nombre           = COALESCE($1, nombre),
+        especie          = COALESCE($2, especie),
+        raza             = COALESCE($3, raza),
+        color            = COALESCE($4, color),
+        fecha_nacimiento = COALESCE($5, fecha_nacimiento),
+        peso             = COALESCE($6, peso)
+       WHERE codigo = $7`,
+      [nombre ?? null, especie ?? null, raza ?? null, color ?? null, fechaNacimiento ?? null, peso ?? null, id],
+    );
+
+    return { mensaje: 'Mascota actualizada exitosamente' };
+  }
+
+  async registrarPeso(id: string, body: any) {
+    const { peso } = body;
+
+    if (!peso) {
+      throw new BadRequestException('El peso es obligatorio');
+    }
+
+    const { rows: [mascota] } = await this.pool.query(
+      `SELECT codigo FROM mascotas WHERE codigo = $1`,
+      [id],
+    );
+
+    if (!mascota) {
+      throw new NotFoundException('Mascota no encontrada');
+    }
+
+    await this.pool.query(
+      `UPDATE mascotas SET peso = $1 WHERE codigo = $2`,
+      [peso, id],
+    );
+
+    return { mensaje: 'Peso registrado exitosamente' };
+  }
+
+  async hospitalizarMascota(id: string) {
+    const { rows: [mascota] } = await this.pool.query(
+      `SELECT codigo, estado FROM mascotas WHERE codigo = $1`,
+      [id],
+    );
+
+    if (!mascota) {
+      throw new NotFoundException('Mascota no encontrada');
+    }
+
+    if (mascota.estado !== 'activa') {
+      throw new BadRequestException('Solo se puede hospitalizar una mascota con estado activa');
+    }
+
+    await this.pool.query(
+      `UPDATE mascotas SET estado = 'hospitalizada' WHERE codigo = $1`,
+      [id],
+    );
+
+    return { mensaje: 'Mascota hospitalizada exitosamente' };
+  }
+
+  async registrarFallecimiento(id: string) {
+    const { rows: [mascota] } = await this.pool.query(
+      `SELECT codigo, estado FROM mascotas WHERE codigo = $1`,
+      [id],
+    );
+
+    if (!mascota) {
+      throw new NotFoundException('Mascota no encontrada');
+    }
+
+    if (mascota.estado === 'fallecida') {
+      throw new BadRequestException('La mascota ya está registrada como fallecida');
+    }
+
+    await this.pool.query(
+      `UPDATE mascotas SET estado = 'fallecida' WHERE codigo = $1`,
+      [id],
+    );
+
+    return { mensaje: 'Fallecimiento registrado exitosamente' };
   }
 }
