@@ -14,6 +14,7 @@ import { UsersModule } from './users/users.module';
 import { MascotasModule } from './mascotas/mascotas.module';
 import { ReportesPdfModule } from './reportesPDF/reportes-pdf.module';
 import { FacturacionModule } from './facturacion/facturacion.module';
+import { HospitalizationModule } from './hospitalization/hospitalization.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { FacturacionModule } from './facturacion/facturacion.module';
     MascotasModule,
     ReportesPdfModule,
     FacturacionModule,
+    HospitalizationModule,
   ],
   controllers: [],
   providers: [],

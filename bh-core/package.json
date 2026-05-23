@@ -30,6 +30,7 @@
     "@nestjs/typeorm": "^11.0.1",
     "@prisma/adapter-pg": "^7.8.0",
     "@types/bcrypt": "^6.0.0",
+    "@types/pdfkit": "^0.17.6",
     "bcrypt": "^6.0.0",
 
     "class-transformer": "^0.5.1",
@@ -38,12 +39,12 @@
     "nodemailer": "^8.0.7",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
+    "pdfkit": "^0.18.0",
     "pg": "^8.21.0",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.1",
-    "typeorm": "^1.0.0"
     "typeorm": "^1.0.0",
-    "uuid": "^14.0.0">>>>>>> develop
+    "uuid": "^14.0.0"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.0.0",
