@@ -1,20 +1,20 @@
-import {
-    Body,
-    Controller,
-    HttpCode,
-    HttpStatus,
-    Post,
-} from '@nestjs/common';
+import { Controller, Post, Get, Body, Query, HttpCode, HttpStatus } from '@nestjs/common';
+import { AuditService } from './audit.service';
 import { CreateAuditEventDto } from './dto/create-audit-event.dto';
-import { AuditEventService } from './audit-event.service';
+import { GetAuditEventsFilterDto } from './dto/get-audit-events-filter.dto';
 
-@Controller('api/v1/audit')
+@Controller('api/v1/audit/events')
 export class AuditController {
-    constructor(private readonly auditEventService: AuditEventService) {}
+  constructor(private readonly auditService: AuditService) {}
 
-    @Post('events')
-    @HttpCode(HttpStatus.CREATED)
-    async createAuditEvent(@Body() payload: CreateAuditEventDto) {
-        return this.auditEventService.create(payload);
-    }
+  @Post()
+  @HttpCode(HttpStatus.CREATED)
+  async createEvent(@Body() createDto: CreateAuditEventDto) {
+    return this.auditService.createEvent(createDto);
+  }
+
+  @Get()
+  async getEvents(@Query() filters: GetAuditEventsFilterDto) {
+    return this.auditService.getEvents(filters);
+  }
 }

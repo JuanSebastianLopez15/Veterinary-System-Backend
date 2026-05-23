@@ -1,17 +1,9 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
-
 import { AuditController } from './audit.controller';
-import { AuditEventService } from './audit-event.service';
-import { AuditEvent } from './entities/audit-event.entity';
+import { AuditService } from './audit.service';
 
-/**
- * Módulo encargado de gestionar
- * la trazabilidad del sistema.
- */
 @Module({
-    imports: [TypeOrmModule.forFeature([AuditEvent])],
-    controllers: [AuditController],
-    providers: [AuditEventService],
+  controllers: [AuditController],
+  providers: [AuditService],
 })
 export class AuditModule {}
