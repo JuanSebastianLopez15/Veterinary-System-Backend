@@ -14,9 +14,6 @@ export class EvolutionNote {
   @Column({ type: 'date' })
   fecha: Date;
 
-  @Column()
+  @Column({ name: 'descripcion' })
   nota: string;
-
-  @Column({ name: 'creado_en', type: 'timestamp', default: () => 'now()' })
-  creadoEn: Date;
 }

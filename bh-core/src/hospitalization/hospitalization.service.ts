@@ -261,8 +261,7 @@ export class HospitalizationService {
         codigo: note.codigo,
         fecha: note.fecha,
         nota: note.nota,
-        veterinarioCodigo: note.veterinarioCodigo,
-        creadoEn: note.creadoEn
+        veterinarioCodigo: note.veterinarioCodigo
       }))
     };
   }
