@@ -25,4 +25,10 @@ export class FacturacionController {
   ) {
     return this.facturacionService.anularFactura(id, anularFacturaDto);
   }
+
+  @Patch(':id/pagar')
+  @Roles('RECEPCIONISTA') // Restricción estricta de seguridad: Solo la recepcionista puede ejecutarlo
+  async pagar(@Param('id', ParseUUIDPipe) id: string) {
+    return this.facturacionService.marcarComoPagada(id);
+  }
 }

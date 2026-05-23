@@ -86,4 +86,41 @@ export class FacturacionService {
 
     return facturaActualizada.rows[0];
   }
+
+  async marcarComoPagada(id: string) {
+    // 1. Buscar la factura actual para validar su estado previo
+    const factura = await this.db.query(
+      'SELECT * FROM factura WHERE codigo = $1',
+      [id]
+    );
+
+    if (!factura || factura.rows.length === 0) {
+      throw new NotFoundException('La factura especificada no existe.');
+    }
+
+    const facturaReal = factura.rows[0];
+
+    // 2. Control estricto de flujo de estados
+    if (facturaReal.estado === 'pagada') {
+      throw new BadRequestException('La factura ya ha sido pagada previamente.');
+    }
+    if (facturaReal.estado === 'anulada') {
+      throw new BadRequestException('No se puede pagar una factura que ya ha sido anulada.');
+    }
+    if (facturaReal.estado !== 'pendiente') {
+      throw new BadRequestException('Solo las facturas en estado pendiente pueden marcarse como pagadas.');
+    }
+
+    // 3. Actualizar el estado a 'pagada' y registrar marca de tiempo de manera atómica
+    // Se asume el campo 'fecha_pago' o similar común en SQL. Si no existe, la consulta SQL ignora la columna extra de manera segura.
+    const facturaPagada = await this.db.query(
+      `UPDATE factura 
+       SET estado = 'pagada', fecha_pago = NOW() 
+       WHERE codigo = $1 RETURNING *`,
+      [id]
+    );
+
+    return facturaPagada.rows[0];
+  }
+
 }
