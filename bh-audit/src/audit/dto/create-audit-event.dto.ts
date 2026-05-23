@@ -1,4 +1,4 @@
-import {IsDateString, IsObject, IsOptional, IsString} from 'class-validator';
+import { IsDateString, IsObject, IsOptional, IsString } from 'class-validator';
 
 /**
  * DTO encargado de validar los eventos
@@ -7,6 +7,7 @@ import {IsDateString, IsObject, IsOptional, IsString} from 'class-validator';
 export class CreateAuditEventDto {
     /**
      * Acción ejecutada en el sistema.
+     * Se maneja como string para evitar dependencia entre microservicios.
      */
     @IsString()
     action: string;
@@ -51,6 +52,9 @@ export class CreateAuditEventDto {
     @IsString()
     ipAddress?: string;
 
+    /**
+     * Timestamp opcional enviado por el cliente.
+     */
     @IsOptional()
     @IsDateString()
     timestamp?: string;
