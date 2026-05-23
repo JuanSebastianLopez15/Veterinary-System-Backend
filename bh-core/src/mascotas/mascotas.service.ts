@@ -90,6 +90,22 @@ export class MascotasService {
       [nombre ?? null, especie ?? null, raza ?? null, color ?? null, fechaNacimiento ?? null, peso ?? null, id],
     );
 
+    await this.auditService.emit({
+      action: 'ACTUALIZAR_MASCOTA',
+      userId: id,
+      userRole: null,
+      entityType: 'MASCOTA',
+      entityId: id,
+      details: {
+        nombre,
+        especie,
+        raza,
+        color,
+        fechaNacimiento,
+        peso,
+      },
+    });
+
     return { mensaje: 'Mascota actualizada exitosamente' };
   }
 
@@ -114,6 +130,15 @@ export class MascotasService {
       [peso, id],
     );
 
+    await this.auditService.emit({
+      action: 'ACTUALIZAR_PESO_MASCOTA',
+      userId: id,
+      userRole: null,
+      entityType: 'MASCOTA',
+      entityId: id,
+      details: { peso },
+    });
+
     return { mensaje: 'Peso registrado exitosamente' };
   }
 
@@ -136,6 +161,15 @@ export class MascotasService {
       [id],
     );
 
+    await this.auditService.emit({
+      action: 'HOSPITALIZAR_MASCOTA',
+      userId: id,
+      userRole: null,
+      entityType: 'MASCOTA',
+      entityId: id,
+      details: { estado: 'hospitalizada' },
+    });
+
     return { mensaje: 'Mascota hospitalizada exitosamente' };
   }
 
@@ -157,6 +191,15 @@ export class MascotasService {
       `UPDATE mascotas SET estado = 'fallecida' WHERE codigo = $1`,
       [id],
     );
+
+    await this.auditService.emit({
+      action: 'FALLECIMIENTO_MASCOTA',
+      userId: id,
+      userRole: null,
+      entityType: 'MASCOTA',
+      entityId: id,
+      details: { estado: 'fallecida' },
+    });
 
     return { mensaje: 'Fallecimiento registrado exitosamente' };
   }
