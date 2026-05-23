@@ -23,7 +23,7 @@ export class HospitalizationService {
   async create(dto: CreateHospitalizationDto, veterinarianCode: string) {
     // 1. Verificar que la mascota existe con ese codigo
     const pet = await this.dataSource.query(
-      `SELECT codigo, estado FROM "Mascotas" WHERE codigo = $1`,
+      `SELECT codigo, estado FROM "mascotas" WHERE codigo = $1`,
       [dto.mascotaCodigo]
     );
     if (!pet.length) throw new NotFoundException('Mascota no encontrada');
@@ -43,32 +43,29 @@ export class HospitalizationService {
     try {
       const hospitalizationCodigo = `HOSP-${uuidv4()}`;
 
-      const hospitalization = this.hospitalizationRepo.create({
-        codigo: hospitalizationCodigo,
-        mascotaCodigo: dto.mascotaCodigo,
-        veterinarioCodigo: veterinarianCode,
-        fechaIngreso: new Date(dto.fechaIngreso),
-        motivo: dto.motivo,
-      });
+      const hospitalization = new Hospitalization();
+      hospitalization.codigo = hospitalizationCodigo;
+      hospitalization.mascotaCodigo = dto.mascotaCodigo;
+      hospitalization.veterinarioCodigo = veterinarianCode;
+      hospitalization.fechaIngreso = new Date(dto.fechaIngreso);
+      hospitalization.motivo = dto.motivo;
 
       await queryRunner.manager.save(Hospitalization, hospitalization);
 
       // 5. Actualizar el campo estado en Mascotas a 'hospitalizada'
       await queryRunner.manager.query(
-        `UPDATE "Mascotas" SET estado = $1 WHERE codigo = $2`,
+        `UPDATE "mascotas" SET estado = $1 WHERE codigo = $2`,
         ['hospitalizada', dto.mascotaCodigo]
       );
 
       await queryRunner.commitTransaction();
 
       // 6. Notificar a AuditService (fire-and-forget)
-      this.auditService.notifyEvent({
-        eventType: 'INICIO_HOSPITALIZACION',
-        payload: {
-          usuarioCodigo: veterinarianCode,
-          rol: 'veterinario',
-          detalle: `Mascota ${dto.mascotaCodigo} internada`,
-        },
+      this.auditService.log({
+        accion: 'INICIO_HOSPITALIZACION',
+        usuarioCodigo: veterinarianCode,
+        rol: 'veterinario',
+        detalle: `Mascota ${dto.mascotaCodigo} internada`,
       }).catch(() => {});
 
       return { mensaje: 'Mascota internada exitosamente', codigo: hospitalizationCodigo };
@@ -118,20 +115,18 @@ export class HospitalizationService {
       }
 
       await queryRunner.manager.query(
-        `UPDATE "Mascotas" SET estado = $1 WHERE codigo = $2`,
+        `UPDATE "mascotas" SET estado = $1 WHERE codigo = $2`,
         [newPetState, hospitalization.mascotaCodigo]
       );
 
       await queryRunner.commitTransaction();
 
       // 5. Notificar a AuditService (fire-and-forget)
-      this.auditService.notifyEvent({
-        eventType: 'ALTA_HOSPITALIZACION',
-        payload: {
-          usuarioCodigo: veterinarianCode,
-          rol: 'veterinario',
-          detalle: `Alta de hospitalización ${hospitalizationId}, egreso: ${dto.estadoEgreso}`,
-        },
+      this.auditService.log({
+        accion: 'ALTA_HOSPITALIZACION',
+        usuarioCodigo: veterinarianCode,
+        rol: 'veterinario',
+        detalle: `Alta de hospitalización ${hospitalizationId}, egreso: ${dto.estadoEgreso}`,
       }).catch(() => {});
 
       return { mensaje: 'Alta registrada exitosamente' };
@@ -177,16 +172,77 @@ export class HospitalizationService {
     await this.evolutionNoteRepo.save(note);
 
     // Notificar a AuditService (fire-and-forget)
-    this.auditService.notifyEvent({
-      eventType: 'NOTA_EVOLUCION_REGISTRADA',
-      payload: {
-        usuarioCodigo: veterinarianCode,
-        rol: 'veterinario',
-        detalle: `Nota de evolución registrada para hospitalización ${hospitalizationId}`,
-      },
+    this.auditService.log({
+      accion: 'NOTA_EVOLUCION_REGISTRADA',
+      usuarioCodigo: veterinarianCode,
+      rol: 'veterinario',
+      detalle: `Nota de evolución registrada para hospitalización ${hospitalizationId}`,
     }).catch(() => {});
 
     return { mensaje: 'Nota de evolución registrada exitosamente', codigo: noteCodigo };
+  }
+
+  async getActiveHospitalizations() {
+    const rawResults = await this.hospitalizationRepo
+      .createQueryBuilder('hosp')
+      .select([
+        'hosp.codigo AS h_codigo',
+        'hosp.fecha_ingreso AS h_fecha_ingreso',
+        'hosp.motivo AS h_motivo',
+        'mascota.codigo AS m_codigo',
+        'mascota.nombre AS m_nombre',
+        'mascota.especie AS m_especie',
+        'mascota.raza AS m_raza',
+        'usuario.codigo AS u_codigo',
+        'usuario.nombre AS u_nombre',
+        'usuario.apellido AS u_apellido',
+        'usuario.correo AS u_correo',
+      ])
+      .innerJoin('mascotas', 'mascota', 'hosp.mascota_codigo = mascota.codigo')
+      .innerJoin('usuario', 'usuario', 'hosp.veterinario_codigo = usuario.codigo')
+      .where('hosp.fecha_salida IS NULL')
+      .orderBy('hosp.fecha_ingreso', 'ASC')
+      .getRawMany();
+
+    const hoy = new Date();
+
+    const hospitalizaciones = rawResults.map((row) => {
+      const ingreso = new Date(row.h_fecha_ingreso);
+      const diasInternada = Math.floor(
+        (hoy.getTime() - ingreso.getTime()) / (1000 * 60 * 60 * 24)
+      );
+
+      const formatIso = (date: Date | string) => {
+        if (!date) return '';
+        const d = typeof date === 'string' ? new Date(date) : date;
+        return d.toISOString().split('T')[0];
+      };
+
+      return {
+        hospitalizacion: {
+          codigo: row.h_codigo,
+          fechaIngreso: formatIso(row.h_fecha_ingreso),
+          motivo: row.h_motivo,
+          diasInternada,
+        },
+        mascota: {
+          codigo: row.m_codigo,
+          nombre: row.m_nombre,
+          especie: row.m_especie,
+          raza: row.m_raza,
+        },
+        veterinario: {
+          codigo: row.u_codigo,
+          nombre: `${row.u_nombre} ${row.u_apellido}`,
+          email: row.u_correo,
+        },
+      };
+    });
+
+    return {
+      total: hospitalizaciones.length,
+      hospitalizaciones,
+    };
   }
 
   async getEvolutionNotes(hospitalizationId: string) {

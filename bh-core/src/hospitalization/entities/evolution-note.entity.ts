@@ -1,6 +1,6 @@
 import { Entity, Column, PrimaryColumn, ManyToOne, JoinColumn } from 'typeorm';
 
-@Entity('Nota_Evolucion')
+@Entity('nota_evolucion')
 export class EvolutionNote {
   @PrimaryColumn()
   codigo: string;

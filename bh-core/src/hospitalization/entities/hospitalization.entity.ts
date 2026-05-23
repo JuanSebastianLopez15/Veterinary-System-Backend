@@ -1,6 +1,6 @@
 import { Entity, Column, PrimaryColumn, ManyToOne, JoinColumn } from 'typeorm';
 
-@Entity('Hospitalizacion')
+@Entity('hospitalizacion')
 export class Hospitalization {
   @PrimaryColumn()
   codigo: string;
@@ -22,7 +22,4 @@ export class Hospitalization {
 
   @Column()
   motivo: string;
-
-  @Column({ name: 'creado_en', type: 'timestamp', default: () => 'now()' })
-  creadoEn: Date;
 }

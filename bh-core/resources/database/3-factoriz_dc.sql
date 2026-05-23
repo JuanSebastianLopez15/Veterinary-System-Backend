@@ -16,7 +16,7 @@ ALTER TABLE Usuario ALTER COLUMN contrasena TYPE VARCHAR(255);
 -- CHECK sobre el estado
 ALTER TABLE Mascotas DROP CONSTRAINT IF EXISTS chk_mascota_estado;
 ALTER TABLE Mascotas ADD  CONSTRAINT chk_mascota_estado
-    CHECK (estado IN ('activa', 'inactiva', 'fallecida'));
+    CHECK (estado IN ('activa', 'inactiva', 'fallecida', 'hospitalizada'));
 ALTER TABLE Cita DROP CONSTRAINT IF EXISTS chk_cita_estado;
 ALTER TABLE Cita ADD  CONSTRAINT chk_cita_estado
     CHECK (estado IN ('pendiente', 'confirmada', 'completada', 'cancelada'));
