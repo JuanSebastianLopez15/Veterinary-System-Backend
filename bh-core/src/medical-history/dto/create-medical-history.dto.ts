@@ -43,7 +43,7 @@ export class CreateMedicalHistoryDto {
   peso_mascota: number;
 
   @IsOptional()
-  @IsString()
+  @IsDateString()
   proxima_visita?: string;
 
   @IsOptional()

@@ -107,16 +107,11 @@ export class MedicalHistoryService {
 
       await queryRunner.commitTransaction();
 
-      this.auditService.notifyEvent({
-        eventType: 'CREACION_HISTORIAL_MEDICO',
-        payload: {
-          historial: {
-            codigo: historialCodigo,
-            citaCodigo,
-            mascotaCodigo: cita[0].mascota_codigo,
-            veterinarianCode,
-          },
-        },
+      this.auditService.log({
+        accion: 'CREACION_HISTORIAL_MEDICO',
+        usuarioCodigo: veterinarianCode,
+        rol: 'veterinario',
+        detalle: `Historial creado para cita ${citaCodigo}`,
       }).catch(() => {});
 
       return { mensaje: 'Historial médico registrado exitosamente', codigo: historialCodigo };
@@ -161,14 +156,11 @@ export class MedicalHistoryService {
       
       await queryRunner.commitTransaction();
       
-      this.auditService.notifyEvent({
-        eventType: 'EDICION_HISTORIAL_MEDICO',
-        payload: {
-          historial: {
-            codigo: historial.codigo,
-            citaCodigo,
-          },
-        },
+      this.auditService.log({
+        accion: 'EDICION_HISTORIAL_MEDICO',
+        usuarioCodigo: veterinarianCode,
+        rol: 'veterinario',
+        detalle: `Historial editado para cita ${citaCodigo}`,
       }).catch(() => {});
       
       return { mensaje: 'Historial médico editado exitosamente' };
