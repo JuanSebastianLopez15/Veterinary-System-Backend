@@ -5,6 +5,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { MedicalHistory } from './entities/medical-history.entity';
 import { PrescribedMedication } from './entities/prescribed-medication.entity';
 import { Vaccine } from './entities/vaccine.entity';
+import { Pet } from './entities/pet.entity';
+import { Appointment } from './entities/appointment.entity';
+import { Hospitalization } from './entities/hospitalization.entity';
 import { CreateMedicalHistoryDto } from './dto/create-medical-history.dto';
 import { EditMedicalHistoryDto } from './dto/edit-medical-history.dto';
 import { CreateVaccineDto } from './dto/create-vaccine.dto';
@@ -19,6 +22,12 @@ export class MedicalHistoryService {
     private medicamentoRepo: Repository<PrescribedMedication>,
     @InjectRepository(Vaccine)
     private vacunaRepo: Repository<Vaccine>,
+    @InjectRepository(Pet)
+    private petRepo: Repository<Pet>,
+    @InjectRepository(Appointment)
+    private appointmentRepo: Repository<Appointment>,
+    @InjectRepository(Hospitalization)
+    private hospitalizationRepo: Repository<Hospitalization>,
     private dataSource: DataSource,
     private auditService: AuditService,
   ) {}
@@ -224,5 +233,132 @@ export class MedicalHistoryService {
     }).catch(() => {});
     
     return { mensaje: 'Vacuna registrada exitosamente', codigo: vaccineCodigo };
+  }
+
+  async getPetHistoryFromAppointment(citaId: string, veterinarianCode: string) {
+    // 1. Verificar que la cita existe
+    const appointment = await this.appointmentRepo.findOne({ where: { codigo: citaId } });
+    if (!appointment) throw new NotFoundException('Cita no encontrada');
+
+    // 2. Verificar que la cita pertenece al veterinario autenticado
+    if (appointment.veterinarioCodigo !== veterinarianCode)
+      throw new ForbiddenException('No tienes permiso sobre esta cita');
+
+    // 3. Verificar que la cita no está cancelada
+    if (appointment.estado === 'cancelada')
+      throw new BadRequestException('No puedes consultar el historial desde una cita cancelada');
+
+    return this.getPetHistory(appointment.mascotaCodigo);
+  }
+
+  async getPetHistory(mascotaId: string) {
+    // 4. Verificar que la mascota existe
+    const pet = await this.petRepo.findOne({ where: { codigo: mascotaId } });
+    if (!pet) throw new NotFoundException('Mascota no encontrada');
+
+    // 5. Obtener historiales médicos ordenados por creado_en DESC
+    const historiales = await this.historialRepo.find({
+      where: { mascotaCodigo: mascotaId },
+      relations: { medicamentos: true, vacunas: true },
+      order: { creadoEn: 'DESC' },
+    });
+
+    // 6. Obtener hospitalizaciones ordenadas por fecha_ingreso DESC
+    const hospitalizaciones = await this.hospitalizationRepo.find({
+      where: { mascotaCodigo: mascotaId },
+      relations: { notasEvolucion: true },
+      order: { fechaIngreso: 'DESC' },
+    });
+
+    // Ordenar notas de evolución por fecha ASC dentro de cada hospitalización
+    hospitalizaciones.forEach((h) => {
+      if (h.notasEvolucion) {
+        h.notasEvolucion.sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
+      }
+    });
+
+    return {
+      mascota: {
+        codigo: pet.codigo,
+        nombre: pet.nombre,
+        especie: pet.especie,
+        raza: pet.raza,
+        color: pet.color,
+        fechaNacimiento: pet.fechaNacimiento,
+        peso: pet.peso,
+        estado: pet.estado,
+      },
+      historialMedico: historiales.map((h) => ({
+        codigo: h.codigo,
+        citaCodigo: h.citaCodigo,
+        motivoVisita: h.motivoVisita,
+        diagnostico: h.diagnostico,
+        tratamientoAplicado: h.tratamientoAplicado,
+        pesoMascota: h.pesoMascota,
+        proximaVisita: h.proximaVisita,
+        editableHasta: h.editableHasta,
+        creadoEn: h.creadoEn,
+        medicamentos: h.medicamentos.map((m) => ({
+          codigo: m.codigo,
+          productoCodigo: m.productoCodigo,
+          dosis: m.dosis,
+          duracion: m.duracion,
+          cantidad: m.cantidad,
+        })),
+        vacunas: h.vacunas.map((v) => ({
+          codigo: v.codigo,
+          nombre: v.nombre,
+          fecha: v.fecha,
+          fechaSiguienteVacuna: v.fechaSiguienteVacuna,
+        })),
+      })),
+      hospitalizaciones: hospitalizaciones.map((h) => ({
+        codigo: h.codigo,
+        fechaIngreso: h.fechaIngreso,
+        fechaSalida: h.fechaSalida,
+        estadoEgreso: h.estadoEgreso,
+        motivo: h.motivo,
+        notasEvolucion: h.notasEvolucion.map((n) => ({
+          codigo: n.codigo,
+          fecha: n.fecha,
+          nota: n.nota,
+          veterinarioCodigo: n.veterinarioCodigo,
+        })),
+      })),
+    };
+  }
+
+  async getIndividualHistory(historialId: string) {
+    const h = await this.historialRepo.findOne({
+      where: { codigo: historialId },
+      relations: { medicamentos: true, vacunas: true },
+    });
+
+    if (!h) throw new NotFoundException('Historial médico no encontrado');
+
+    return {
+      codigo: h.codigo,
+      citaCodigo: h.citaCodigo,
+      motivoVisita: h.motivoVisita,
+      diagnostico: h.diagnostico,
+      tratamientoAplicado: h.tratamientoAplicado,
+      pesoMascota: h.pesoMascota,
+      proximaVisita: h.proximaVisita,
+      editableHasta: h.editableHasta,
+      creadoEn: h.creadoEn,
+      medicamentos: h.medicamentos.map((m) => ({
+        codigo: m.codigo,
+        productoCodigo: m.productoCodigo,
+        dosis: m.dosis,
+        duracion: m.duracion,
+        cantidad: m.cantidad,
+      })),
+      vacunas: h.vacunas.map((v) => ({
+        codigo: v.codigo,
+        nombre: v.nombre,
+        fecha: v.fecha,
+        fechaSiguienteVacuna: v.fechaSiguienteVacuna,
+      })),
+    };
   }
 }

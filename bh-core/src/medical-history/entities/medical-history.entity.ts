@@ -1,6 +1,7 @@
-import { Entity, Column, PrimaryColumn, OneToMany } from 'typeorm';
+import { Entity, Column, PrimaryColumn, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
 import { PrescribedMedication } from './prescribed-medication.entity';
 import { Vaccine } from './vaccine.entity';
+import { Pet } from './pet.entity';
 
 @Entity('historial_medico')
 export class MedicalHistory {
@@ -36,6 +37,10 @@ export class MedicalHistory {
 
   @Column({ name: 'creado_en', type: 'timestamp', default: () => 'now()' })
   creadoEn: Date;
+
+  @ManyToOne(() => Pet, (pet) => pet.historiales)
+  @JoinColumn({ name: 'mascota_codigo' })
+  pet: Pet;
 
   @OneToMany(() => PrescribedMedication, (med) => med.historial, { cascade: true })
   medicamentos: PrescribedMedication[];

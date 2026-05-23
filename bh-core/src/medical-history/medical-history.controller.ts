@@ -39,6 +39,16 @@ export class MedicalHistoryController {
   getUpcomingVaccines() {
     return this.service.getUpcomingVaccines();
   }
+
+  @Get(':citaId/pet-history')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('VETERINARIO')
+  getPetHistoryFromAppointment(
+    @Param('citaId') citaId: string,
+    @Req() req: any,
+  ) {
+    return this.service.getPetHistoryFromAppointment(citaId, req.user.codigo);
+  }
 }
 
 @Controller('medical-history')
@@ -55,5 +65,24 @@ export class VaccineController {
     @Body() dto: CreateVaccineDto,
   ) {
     return this.service.addVaccine(historialId, dto, req.user.codigo);
+  }
+
+  @Get(':historialId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('VETERINARIO', 'RECEPCIONISTA')
+  getIndividualHistory(@Param('historialId') historialId: string) {
+    return this.service.getIndividualHistory(historialId);
+  }
+}
+
+@Controller('pets')
+export class PetHistoryController {
+  constructor(private readonly service: MedicalHistoryService) {}
+
+  @Get(':mascotaId/history')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('VETERINARIO', 'RECEPCIONISTA')
+  getPetHistory(@Param('mascotaId') mascotaId: string) {
+    return this.service.getPetHistory(mascotaId);
   }
 }
