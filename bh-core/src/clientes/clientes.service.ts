@@ -1,9 +1,10 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
-
+import { AuditService } from '../audit/audit.service';
 @Injectable()
 export class ClientesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService,
+              private readonly auditService: AuditService,) {}
 
   async registrarCliente(body: any) {
     const { nombre, apellido, correo, contrasena, telefono, direccion, ciudad } = body;
@@ -40,6 +41,22 @@ export class ClientesService {
           ciudad,
         },
       });
+
+      await this.auditService.emit({
+        action: 'REGISTRO_CLIENTE',
+        userId: usuario.codigo,
+        userRole: 'CLIENTE',
+        entityType: 'CLIENTE',
+        entityId: cliente.codigo,
+        details: {
+          nombre,
+          apellido,
+          correo,
+          ciudad,
+        },
+      });
+
+
 
       return {
         codigo: cliente.codigo,
