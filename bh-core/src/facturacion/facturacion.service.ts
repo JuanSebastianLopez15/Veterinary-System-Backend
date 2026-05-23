@@ -123,4 +123,24 @@ export class FacturacionService {
     return facturaPagada.rows[0];
   }
 
+  async consultarFacturas(estado?: string) {
+    let query = 'SELECT * FROM factura';
+    const params: any[] = [];
+
+    // Si la recepcionista seleccionó un filtro válido, lo aplicamos a la consulta SQL
+    if (estado) {
+      const estadoLimpio = estado.toLowerCase().trim();
+      if (['pendiente', 'pagada', 'anulada'].includes(estadoLimpio)) {
+        query += ' WHERE estado = $1';
+        params.push(estadoLimpio);
+      }
+    }
+
+    // Ordenamos por fecha de creación o código para que la UI lo muestre organizado
+    query += ' ORDER BY codigo DESC';
+
+    const resultado = await this.db.query(query, params);
+    return resultado.rows;
+  }
+
 }
