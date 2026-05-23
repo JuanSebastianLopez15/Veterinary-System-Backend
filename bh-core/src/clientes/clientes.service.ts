@@ -137,6 +137,15 @@ export class ClientesService {
       throw new NotFoundException('Cliente no encontrado');
     }
 
+    await this.auditService.emit({
+      action: 'CONSULTA_CLIENTE',
+      userId: id,
+      userRole: null,
+      entityType: 'CLIENTE',
+      entityId: id,
+      details: { consulta: 'por_id' },
+    });
+
     return {
       codigo: cliente.codigo,
       nombre: cliente.usuario?.nombre,
@@ -170,6 +179,15 @@ export class ClientesService {
             correo: correo ?? undefined,
             telefono: telefono ?? undefined,
           },
+        });
+
+        await this.auditService.emit({
+          action: 'ACTUALIZACION_CLIENTE',
+          userId: id,
+          userRole: null,
+          entityType: 'CLIENTE',
+          entityId: id,
+          details: body,
         });
       }
 
