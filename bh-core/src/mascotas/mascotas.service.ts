@@ -1,6 +1,9 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';import { Pool } from 'pg';
+import {BadRequestException, Inject, Injectable, Module, NotFoundException} from '@nestjs/common';import { Pool } from 'pg';
 import { DATABASE_POOL } from '../database/database.provider';
 import { AuditService } from '../audit/audit.service';
+@Module({
+  providers: [MascotasService, AuditService],
+})
 @Injectable()
 export class MascotasService {
   constructor(@Inject(DATABASE_POOL) private readonly pool: Pool,
@@ -29,6 +32,21 @@ export class MascotasService {
        RETURNING codigo, nombre, especie, raza, color, fecha_nacimiento, peso, estado`,
       [clienteCodigo, nombre, especie, raza, color, fechaNacimiento, peso],
     );
+
+    await this.auditService.emit({
+      action: 'CREAR_MASCOTA',
+      userId: clienteCodigo,
+      userRole: null,
+      entityType: 'MASCOTA',
+      entityId: mascota.codigo,
+      details: {
+        nombre,
+        especie,
+        raza,
+        color,
+        peso,
+      },
+    });
 
     return mascota;
   }
