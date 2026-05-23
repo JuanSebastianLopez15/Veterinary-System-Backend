@@ -10,16 +10,18 @@ import { AuditModule } from '../audit/audit.module';
 import { MailModule } from '../mail/mail.module';
 
 import { JwtStrategy } from './strategies/jwt.strategy';
-
+console.log('JWT_SECRET:', process.env.JWT_SECRET);
 @Module({
   imports: [
-    ConfigModule,
+    ConfigModule.forRoot({
+      isGlobal: true,
+    }),
     DatabaseModule,
     AuditModule,
     MailModule,
 
     JwtModule.register({
-      secret: process.env.JWT_SECRET,
+      secret: process.env.JWT_SECRET!,
       signOptions: {
         expiresIn: 8 * 60 * 60,
       },

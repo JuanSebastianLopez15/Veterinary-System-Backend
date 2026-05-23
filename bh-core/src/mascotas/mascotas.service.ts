@@ -1,9 +1,11 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';import { Pool } from 'pg';
 import { DATABASE_POOL } from '../database/database.provider';
-
+import { AuditService } from '../audit/audit.service';
 @Injectable()
 export class MascotasService {
-  constructor(@Inject(DATABASE_POOL) private readonly pool: Pool) {}
+  constructor(@Inject(DATABASE_POOL) private readonly pool: Pool,
+              private readonly auditService: AuditService,
+  ) {}
 
   async registrarMascota(body: any) {
     const { clienteCodigo, nombre, especie, raza, color, fechaNacimiento, peso } = body;
