@@ -8,6 +8,7 @@ import {
 
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../database/prisma.service';
+import { MailService } from '../mail/mail.service';
 
 type MetodoPago = 'efectivo' | 'tarjeta' | 'transferencia' | 'otro';
 
@@ -120,6 +121,7 @@ export class AppointmentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly mailService: MailService,
   ) {}
 
   private parseTime(timeStr: string): Date {
@@ -228,6 +230,26 @@ export class AppointmentsService {
         pago: createdAppointment!.pago,
       },
     });
+
+    // Envio de correo de confirmacion al cliente (no bloquea si falla)
+    try {
+      const emailData = await this.getAppointmentEmailData(
+        request.clienteCodigo,
+        request.mascotaCodigo,
+        request.usuarioCodigo,
+      );
+      await this.mailService.sendAppointmentConfirmation(emailData.correo, {
+        nombreCliente: emailData.nombreCliente,
+        nombreMascota: emailData.nombreMascota,
+        nombreVeterinario: emailData.nombreVeterinario,
+        fecha: request.fecha,
+        hora: request.hora,
+        servicios: createdAppointment!.servicios,
+        total: createdAppointment!.total,
+      });
+    } catch {
+      console.error(`No se pudo enviar el correo de confirmacion de la cita ${createdAppointment!.codigo}`);
+    }
 
     return createdAppointment!;
   }
@@ -530,6 +552,58 @@ export class AppointmentsService {
     }
 
     return value.trim();
+  }
+
+  /**
+   * Obtiene los datos necesarios para enviar el correo de confirmacion de cita.
+   * Consulta en paralelo el cliente, la mascota y el veterinario.
+   *
+   * @param clienteCodigo - Codigo UUID del cliente
+   * @param mascotaCodigo - Codigo UUID de la mascota
+   * @param veterinarioCodigo - Codigo UUID del veterinario
+   */
+  private async getAppointmentEmailData(
+    clienteCodigo: string,
+    mascotaCodigo: string,
+    veterinarioCodigo: string,
+  ): Promise<{
+    correo: string;
+    nombreCliente: string;
+    nombreMascota: string;
+    nombreVeterinario: string;
+  }> {
+    const [cliente, mascota, veterinario] = await Promise.all([
+      this.prisma.cliente.findUnique({
+        where: { codigo: clienteCodigo },
+        include: { usuario: { select: { correo: true, nombre: true, apellido: true } } },
+      }),
+      this.prisma.mascotas.findUnique({
+        where: { codigo: mascotaCodigo },
+        select: { nombre: true },
+      }),
+      this.prisma.usuario.findUnique({
+        where: { codigo: veterinarioCodigo },
+        select: { nombre: true, apellido: true },
+      }),
+    ]);
+
+    // Verificar que todos los registros existan antes de armar el correo
+    if (!cliente || !cliente.usuario) {
+      throw new Error(`No se encontro el cliente con codigo ${clienteCodigo} para enviar el correo`);
+    }
+    if (!mascota) {
+      throw new Error(`No se encontro la mascota con codigo ${mascotaCodigo} para enviar el correo`);
+    }
+    if (!veterinario) {
+      throw new Error(`No se encontro el veterinario con codigo ${veterinarioCodigo} para enviar el correo`);
+    }
+
+    return {
+      correo: cliente.usuario.correo,
+      nombreCliente: `${cliente.usuario.nombre} ${cliente.usuario.apellido}`,
+      nombreMascota: mascota.nombre,
+      nombreVeterinario: `${veterinario.nombre} ${veterinario.apellido}`,
+    };
   }
 
   private async findActiveServices(
