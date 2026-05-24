@@ -12,7 +12,7 @@ model usuario {
   nombre     String   @db.VarChar(50)
   apellido   String   @db.VarChar(50)
   correo     String   @unique @db.VarChar(70)
-  contrasena String   @db.VarChar(20)
+  contrasena String   @db.VarChar(100)
   rol        String   @db.VarChar(30)
   telefono   String   @db.VarChar(10)
   estado     String   @default("pendiente_verificacion") @db.VarChar(40)
@@ -81,6 +81,7 @@ model producto {
 
   medicamentos_prescritos medicamento_prescrito[]
   movimientos             movimiento_inventario[]
+  detalles_factura        detalle_factura_medicamento[]
 }
 
 model movimiento_inventario {
@@ -223,4 +224,16 @@ model factura {
 
   cita    cita    @relation(fields: [cita_codigo], references: [codigo])
   cliente cliente @relation(fields: [cliente_codigo], references: [codigo])
+  detalles_medicamentos detalle_factura_medicamento[]
+}
+
+model detalle_factura_medicamento {
+  codigo            String   @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar(50)
+  factura_codigo    String   @db.VarChar(50)
+  producto_codigo   String   @db.VarChar(50)
+  cantidad          Int
+  precio_unitario   Float    @db.DoublePrecision
+
+  factura  factura  @relation(fields: [factura_codigo], references: [codigo])
+  producto producto @relation(fields: [producto_codigo], references: [codigo])
 }

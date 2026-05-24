@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException, BadRequestException, Inject } from '@nestjs/common';
 import { CrearFacturaDto } from './dto/crear-factura.dto';
 import { AnularFacturaDto } from './dto/anular-factura.dto';
+import { PdfGeneratorHelper } from '../reportesPDF/helpers/pdf-generator.helper';
+import { REPORTES_COLORS } from '../reportesPDF/reportes-pdf.constants';
 
 @Injectable()
 export class FacturacionService {
@@ -73,7 +75,7 @@ export class FacturacionService {
     //Insertar medicamentos
     for (const med of medicamentosAdicionales) {
       await this.db.query(
-        `INSERT INTO detalle_factura_medicamento (factura_codigo, producto_id, cantidad, precio_unitario)
+        `INSERT INTO detalle_factura_medicamento (factura_codigo, producto_codigo, cantidad, precio_unitario)
          VALUES ($1, $2, $3, $4)`,
         [nuevaFactura.rows[0].codigo, med.productoId, med.cantidad, med.precioUnitario]
       );
@@ -156,7 +158,7 @@ export class FacturacionService {
 
   async generarFacturaPdf(facturaId: string, clienteId: string): Promise<Buffer> {
     const facturaQuery = await this.db.query(
-      `SELECT f.*, u.nombre AS cliente_nombre, m.nombre AS mascota_nombre
+      `SELECT f.*, u.nombre AS cliente_nombre, u.apellido AS cliente_apellido, m.nombre AS mascota_nombre
        FROM factura f
        JOIN cliente cl ON f.cliente_codigo = cl.codigo
        JOIN usuario u ON cl.usuario_codigo = u.codigo
@@ -177,11 +179,38 @@ export class FacturacionService {
       throw new BadRequestException('Acceso denegado. Esta factura pertenece a otro cliente.');
     }
 
-    // Estructura del PDF adaptada a las columnas reales del esquema
-    const encabezadoPdf = `%PDF-1.4\n%B&H_Veterinary_Invoice_Colors:[#48a378,#34795a,#c2e9ce]\n`;
-    const cuerpoDatos = `Factura:${factura.codigo}\nCliente:${factura.cliente_nombre}\nMascota:${factura.mascota_nombre}\n`;
-    const financieros = `Descuento:${factura.descuento}\nPrepagado:${factura.prepagado}\nTotal:${factura.total}\nSaldoPendiente:${factura.saldo_pendiente}\nEstado:${factura.estado}\n`;
+    const doc = PdfGeneratorHelper.createBaseDocument(`Factura N° ${factura.codigo.substring(0,8).toUpperCase()}`);
     
-    return Buffer.from(`${encabezadoPdf}${cuerpoDatos}${financieros}%%EOF`, 'utf-8');
+    doc.fontSize(10)
+       .font('Helvetica')
+       .text(`Cliente: ${factura.cliente_nombre} ${factura.cliente_apellido || ''}`)
+       .text(`Mascota: ${factura.mascota_nombre}`)
+       .moveDown(1);
+       
+    const prepagado = Number(factura.prepagado) || 0;
+    const descuento = Number(factura.descuento) || 0;
+    const total = Number(factura.total) || 0;
+    const saldoPendiente = Number(factura.saldo_pendiente) || 0;
+       
+    doc.text(`Subtotal / Total Bruto: $${(total + descuento + prepagado).toFixed(2)}`)
+       .text(`Descuento: $${descuento.toFixed(2)}`)
+       .text(`Prepagado al agendar: $${prepagado.toFixed(2)}`)
+       .font('Helvetica-Bold')
+       .fillColor(REPORTES_COLORS.VERDE_OSCURO)
+       .text(`Total Facturado: $${total.toFixed(2)}`)
+       .text(`Saldo Pendiente: $${saldoPendiente.toFixed(2)}`)
+       .font('Helvetica')
+       .fillColor(REPORTES_COLORS.TEXTO_NEGRO)
+       .text(`Estado: ${factura.estado.toUpperCase()}`)
+       .moveDown(1);
+       
+    PdfGeneratorHelper.finalizeAndPaging(doc);
+
+    return new Promise<Buffer>((resolve, reject) => {
+      const buffers: Buffer[] = [];
+      doc.on('data', (chunk) => buffers.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(buffers)));
+      doc.on('error', reject);
+    });
   }
 }
