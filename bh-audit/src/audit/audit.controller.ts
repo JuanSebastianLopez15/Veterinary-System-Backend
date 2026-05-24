@@ -3,7 +3,7 @@ import { AuditService } from './audit.service';
 import { CreateAuditEventDto } from './dto/create-audit-event.dto';
 import { GetAuditEventsFilterDto } from './dto/get-audit-events-filter.dto';
 
-@Controller('api/v1/audit/events')
+@Controller('audit/events')
 export class AuditController {
   constructor(private readonly auditService: AuditService) {}
 

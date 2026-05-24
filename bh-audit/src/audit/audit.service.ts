@@ -18,6 +18,8 @@ export class AuditService {
         entityId: createDto.entityId,
         details: createDto.details || {},
         ipAddress: createDto.ipAddress,
+        timestamp: new Date(createDto.timestamp),
+
       },
     });
   }

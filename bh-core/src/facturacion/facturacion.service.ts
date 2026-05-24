@@ -4,7 +4,7 @@ import { AnularFacturaDto } from './dto/anular-factura.dto';
 
 @Injectable()
 export class FacturacionService {
-  constructor(@Inject('DATABASE_CONNECTION') private readonly db: any) {}
+  constructor(@Inject('DATABASE_POOL') private readonly db: any) {}
 
   async generarFactura(crearFacturaDto: CrearFacturaDto) {
     const { citaId, descuento = 0, medicamentosAdicionales = [] } = crearFacturaDto;
