@@ -691,6 +691,10 @@ components:
         category:
           type: string
           enum: [medicamento, vacuna, insumo_quirurgico]
+        type:
+          type: string
+          description: Alias semántico de `category` para el contrato SCRUM-98
+          enum: [medicamento, vacuna, insumo_quirurgico]
         stock:
           type: integer
         minStock:
@@ -700,9 +704,39 @@ components:
         expirationDate:
           type: string
           format: date
+          nullable: true
         createdAt:
           type: string
           format: date-time
+    InventoryProductWithAlerts:
+      allOf:
+        - $ref: '#/components/schemas/InventoryProductResponse'
+        - type: object
+          properties:
+            isLowStock:
+              type: boolean
+              description: True cuando `stock <= minStock`
+            isExpiringSoon:
+              type: boolean
+              description: True cuando `expirationDate` está en los próximos 30 días
+    InventoryAlertsResponse:
+      type: object
+      properties:
+        lowStock:
+          type: array
+          items:
+            $ref: '#/components/schemas/InventoryProductWithAlerts'
+        expiringSoon:
+          type: array
+          items:
+            $ref: '#/components/schemas/InventoryProductWithAlerts'
+    UpdateServicePriceRequest:
+      type: object
+      required: [price]
+      properties:
+        price:
+          type: number
+          minimum: 0
 
     # --- Invoices ---
     CreateInvoiceRequest:
@@ -2269,3 +2303,330 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+
+  # --- Inventario (SCRUM-98) ---
+  /inventory/products:
+    post:
+      tags: [Inventory]
+      summary: Crear producto de inventario
+      description: Solo administradores. Persiste el producto y emite el evento de auditoría correspondiente.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInventoryProductRequest'
+      responses:
+        '201':
+          description: Producto creado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryProductWithAlerts'
+        '400':
+          description: Datos inválidos (stock, minStock o price negativos)
+        '401':
+          description: Token inválido o no proporcionado
+        '403':
+          description: Acceso denegado (requiere rol ADMIN)
+    get:
+      tags: [Inventory]
+      summary: Listar productos con banderas de alerta
+      description: Devuelve cada producto enriquecido con `isLowStock` e `isExpiringSoon`.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista de productos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InventoryProductWithAlerts'
+        '401':
+          description: Token inválido o no proporcionado
+        '403':
+          description: Acceso denegado (requiere rol ADMIN)
+  /inventory/products/{id}:
+    get:
+      tags: [Inventory]
+      summary: Detalle de producto con banderas de alerta
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Producto encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryProductWithAlerts'
+        '401':
+          description: Token inválido o no proporcionado
+        '403':
+          description: Acceso denegado (requiere rol ADMIN)
+        '404':
+          description: Producto no encontrado
+    patch:
+      tags: [Inventory]
+      summary: Actualizar producto de inventario
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateInventoryProductRequest'
+      responses:
+        '200':
+          description: Producto actualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryProductWithAlerts'
+        '400':
+          description: Datos inválidos
+        '401':
+          description: Token inválido o no proporcionado
+        '403':
+          description: Acceso denegado (requiere rol ADMIN)
+        '404':
+          description: Producto no encontrado
+  /inventory/products/{id}/stock:
+    patch:
+      tags: [Inventory]
+      summary: Ajuste manual de stock
+      description: |
+        Aplica un ajuste de stock (positivo o negativo) en una única transacción que
+        actualiza el `stock` del producto y registra un `InventoryMovement` con tipo
+        `MANUAL_ADJUSTMENT`. Reglas:
+        - El stock resultante nunca puede ser negativo.
+        - La auditoría se emite de forma no bloqueante: si bh-audit falla, el ajuste
+          se conserva.
+        - Esta ruta NO debe usarse para descuentos de prescripción; esos descuentos
+          los hace el flujo SCRUM-44 con tipo `PRESCRIPTION_DEDUCTION`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdjustStockRequest'
+      responses:
+        '200':
+          description: Stock ajustado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryProductWithAlerts'
+        '400':
+          description: Ajuste inválido o stock resultante negativo
+        '401':
+          description: Token inválido o no proporcionado
+        '403':
+          description: Acceso denegado (requiere rol ADMIN)
+        '404':
+          description: Producto no encontrado
+  /inventory/low-stock:
+    get:
+      tags: [Inventory]
+      summary: Productos en bajo stock
+      description: |
+        Devuelve los productos donde `stock <= minStock`. Cada elemento incluye
+        `isLowStock: true`.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista de productos en bajo stock
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InventoryProductWithAlerts'
+        '401':
+          description: Token inválido o no proporcionado
+        '403':
+          description: Acceso denegado (requiere rol ADMIN)
+  /inventory/expiring:
+    get:
+      tags: [Inventory]
+      summary: Productos próximos a vencer
+      description: |
+        Devuelve los productos con `expirationDate` dentro de los próximos 30 días.
+        Cada elemento incluye `isExpiringSoon: true`.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista de productos próximos a vencer
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InventoryProductWithAlerts'
+        '401':
+          description: Token inválido o no proporcionado
+        '403':
+          description: Acceso denegado (requiere rol ADMIN)
+  /inventory/alerts:
+    get:
+      tags: [Inventory]
+      summary: Resumen de alertas de inventario
+      description: |
+        Devuelve un objeto con dos arreglos: `lowStock` (productos con
+        `stock <= minStock`) y `expiringSoon` (productos cuyo `expirationDate`
+        está dentro de los próximos 30 días).
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Resumen de alertas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryAlertsResponse'
+        '401':
+          description: Token inválido o no proporcionado
+        '403':
+          description: Acceso denegado (requiere rol ADMIN)
+
+  # --- Servicios (SCRUM-98) ---
+  /services/active:
+    get:
+      tags: [Services]
+      summary: Listar servicios activos
+      description: |
+        Devuelve únicamente los servicios cuyo `isActive` es `true`. Este es el
+        endpoint que el flujo de citas usa para presentar el catálogo seleccionable
+        al crear una cita: los servicios inactivos quedan excluidos.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista de servicios activos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ServiceResponse'
+        '401':
+          description: Token inválido o no proporcionado
+  /services/inactive:
+    get:
+      tags: [Services]
+      summary: Listar servicios inactivos (ADMIN)
+      description: Solo administradores. Los servicios inactivos permanecen visibles en registros históricos.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista de servicios inactivos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ServiceResponse'
+        '401':
+          description: Token inválido o no proporcionado
+        '403':
+          description: Acceso denegado (requiere rol ADMIN)
+  /services/{id}/price:
+    patch:
+      tags: [Services]
+      summary: Actualizar precio de un servicio
+      description: |
+        Solo administradores. Cambia exclusivamente el precio actual del servicio
+        en el catálogo. NO modifica los precios históricos: las citas y facturas ya
+        existentes conservan el `precio_unitario` con que fueron creadas. La acción
+        se audita con `previousPrice` y `newPrice`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateServicePriceRequest'
+      responses:
+        '200':
+          description: Precio actualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceResponse'
+        '400':
+          description: Precio inválido (debe ser >= 0)
+        '401':
+          description: Token inválido o no proporcionado
+        '403':
+          description: Acceso denegado (requiere rol ADMIN)
+        '404':
+          description: Servicio no encontrado
+  /services/{id}/activate:
+    patch:
+      tags: [Services]
+      summary: Reactivar un servicio
+      description: |
+        Solo administradores. Pone `isActive = true` para que el servicio vuelva a
+        aparecer en `/services/active` y pueda ser elegido en nuevas citas.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Servicio reactivado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceResponse'
+        '400':
+          description: El servicio ya está activo
+        '401':
+          description: Token inválido o no proporcionado
+        '403':
+          description: Acceso denegado (requiere rol ADMIN)
+        '404':
+          description: Servicio no encontrado
