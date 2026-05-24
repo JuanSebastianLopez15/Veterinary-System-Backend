@@ -10,6 +10,7 @@ import { Appointment } from './entities/appointment.entity';
 import { Hospitalization } from './entities/hospitalization.entity';
 import { EvolutionNote } from './entities/evolution-note.entity';
 import { AuditModule } from '../audit/audit.module';
+import { InventoryModule } from '../inventory/inventory.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { AuditModule } from '../audit/audit.module';
       EvolutionNote,
     ]),
     AuditModule,
+    InventoryModule,
   ],
   controllers: [MedicalHistoryController, VaccineController, PetHistoryController],
   providers: [MedicalHistoryService],

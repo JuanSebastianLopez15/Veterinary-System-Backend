@@ -12,6 +12,7 @@ import { CreateMedicalHistoryDto } from './dto/create-medical-history.dto';
 import { EditMedicalHistoryDto } from './dto/edit-medical-history.dto';
 import { CreateVaccineDto } from './dto/create-vaccine.dto';
 import { AuditService } from '../audit/audit.service';
+import { InventoryService } from '../inventory/inventory.service';
 
 @Injectable()
 export class MedicalHistoryService {
@@ -30,6 +31,7 @@ export class MedicalHistoryService {
     private hospitalizationRepo: Repository<Hospitalization>,
     private dataSource: DataSource,
     private auditService: AuditService,
+    private inventoryService: InventoryService,
   ) {}
 
   async create(citaCodigo: string, dto: CreateMedicalHistoryDto, veterinarianCode: string) {
@@ -80,17 +82,16 @@ export class MedicalHistoryService {
             cantidad_medicamentos_prescritos: med.cantidad,
           });
 
-          if (med.productoCodigo) {
-            const producto = await queryRunner.manager.query(
-              `SELECT stock FROM "Producto" WHERE codigo = $1`,
-              [med.productoCodigo]
+          if (med.productoCodigo && med.cantidad) {
+            // SCRUM-44: deduct stock through InventoryService.
+            // Absent product → prescription proceeds without deduction.
+            // Insufficient stock → throws and the surrounding transaction rolls back.
+            await this.inventoryService.deductForPrescriptionByCode(
+              med.productoCodigo,
+              med.cantidad,
+              veterinarianCode,
+              'veterinario',
             );
-            if (producto.length && producto[0].stock >= med.cantidad) {
-              await queryRunner.manager.query(
-                `UPDATE "Producto" SET stock = stock - $1 WHERE codigo = $2`,
-                [med.cantidad, med.productoCodigo]
-              );
-            }
           }
         }
       }

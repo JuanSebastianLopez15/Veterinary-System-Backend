@@ -3,45 +3,61 @@ import {
   Body,
   Controller,
   Get,
-  NotFoundException,
   Param,
   Patch,
   Post,
   Query,
   Req,
+  UseGuards,
 } from '@nestjs/common';
 import { Request } from 'express';
 
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { ServicesService } from './services.service';
+import { CreateServiceDto } from './dto/create-service.dto';
+import { UpdateServiceDto } from './dto/update-service.dto';
+import { UpdateServicePriceDto } from './dto/update-service-price.dto';
+
+interface AuthenticatedRequest extends Request {
+  user?: { codigo?: string; rol?: string };
+}
 
 @Controller('services')
 export class ServicesController {
   constructor(private readonly servicesService: ServicesService) {}
 
   @Post()
-  async create(@Body() body: Record<string, unknown>, @Req() req: Request) {
-    const { name, description, price } = body;
-
-    if (!name || !description || price === undefined) {
-      throw new BadRequestException('name, description y price son obligatorios');
-    }
-    if (typeof name !== 'string' || name.trim() === '') {
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  async create(
+    @Body() body: CreateServiceDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    if (!body?.name || typeof body.name !== 'string' || body.name.trim() === '') {
       throw new BadRequestException('name debe ser un texto no vacío');
     }
-    if (typeof description !== 'string' || description.trim() === '') {
-      throw new BadRequestException('description debe ser un texto no vacío');
+    if (body.description !== undefined && typeof body.description !== 'string') {
+      throw new BadRequestException('description debe ser un texto');
     }
-    if (typeof price !== 'number' || price < 0) {
+    if (typeof body.price !== 'number' || body.price < 0) {
       throw new BadRequestException('price debe ser un número no negativo');
     }
-
-    return this.servicesService.create(
-      { name: name as string, description: description as string, price: price as number },
+    return this.servicesService.createService(
+      {
+        name: body.name,
+        description: body.description,
+        price: body.price,
+      },
+      req.user?.codigo,
+      req.user?.rol,
       req.ip,
     );
   }
 
   @Get()
+  @UseGuards(JwtAuthGuard)
   async findAll(@Query('isActive') isActive?: string) {
     if (isActive !== undefined && isActive !== 'true' && isActive !== 'false') {
       throw new BadRequestException('isActive debe ser true o false');
@@ -50,42 +66,98 @@ export class ServicesController {
     return this.servicesService.findAll(filter);
   }
 
-  @Get(':id')
-  async findOne(@Param('id') id: string) {
-    const service = await this.servicesService.findOne(id);
-    if (!service) throw new NotFoundException('Servicio no encontrado');
-    return service;
+  @Get('active')
+  @UseGuards(JwtAuthGuard)
+  async findActive() {
+    return this.servicesService.findActive();
   }
 
-  @Patch(':id')
-  async update(
-    @Param('id') id: string,
-    @Body() body: Record<string, unknown>,
-    @Req() req: Request,
-  ) {
-    const { name, description, price } = body;
+  @Get('inactive')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  async findInactive() {
+    return this.servicesService.findInactive();
+  }
 
-    if (price !== undefined && (typeof price !== 'number' || price < 0)) {
+  @Get(':id')
+  @UseGuards(JwtAuthGuard)
+  async findOne(@Param('id') id: string) {
+    return this.servicesService.findOne(id);
+  }
+
+  @Patch(':id/price')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  async updatePrice(
+    @Param('id') id: string,
+    @Body() body: UpdateServicePriceDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    if (typeof body?.price !== 'number' || body.price < 0) {
       throw new BadRequestException('price debe ser un número no negativo');
     }
-
-    const service = await this.servicesService.update(
+    return this.servicesService.updatePrice(
       id,
-      {
-        name: name as string | undefined,
-        description: description as string | undefined,
-        price: price as number | undefined,
-      },
+      body.price,
+      req.user?.codigo,
+      req.user?.rol,
       req.ip,
     );
-    if (!service) throw new NotFoundException('Servicio no encontrado');
-    return service;
   }
 
   @Patch(':id/deactivate')
-  async deactivate(@Param('id') id: string, @Req() req: Request) {
-    const service = await this.servicesService.deactivate(id, req.ip);
-    if (!service) throw new NotFoundException('Servicio no encontrado');
-    return service;
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  async deactivate(
+    @Param('id') id: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.servicesService.deactivate(
+      id,
+      req.user?.codigo,
+      req.user?.rol,
+      req.ip,
+    );
+  }
+
+  @Patch(':id/activate')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  async activate(
+    @Param('id') id: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.servicesService.activate(
+      id,
+      req.user?.codigo,
+      req.user?.rol,
+      req.ip,
+    );
+  }
+
+  @Patch(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  async update(
+    @Param('id') id: string,
+    @Body() body: UpdateServiceDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    if (body?.name !== undefined && typeof body.name !== 'string') {
+      throw new BadRequestException('name debe ser un texto');
+    }
+    if (
+      body?.description !== undefined &&
+      typeof body.description !== 'string'
+    ) {
+      throw new BadRequestException('description debe ser un texto');
+    }
+    return this.servicesService.updateService(
+      id,
+      body,
+      req.user?.codigo,
+      req.user?.rol,
+      req.ip,
+    );
   }
 }
