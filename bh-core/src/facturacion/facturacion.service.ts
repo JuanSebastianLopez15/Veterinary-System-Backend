@@ -13,7 +13,7 @@ export class FacturacionService {
       throw new BadRequestException('El valor del descuento no puede ser un número negativo.');
     }
 
-    // 1. Validar que la cita existe y obtener cliente_codigo
+    //Validar cita
     const citaQuery = await this.db.query(
       `SELECT codigo, cliente_codigo FROM cita WHERE codigo = $1`,
       [citaId]
@@ -23,7 +23,7 @@ export class FacturacionService {
     }
     const clienteCodigo = citaQuery.rows[0].cliente_codigo;
 
-    // 2. Verificar que no exista ya una factura para esta cita
+    //Verificar factura existente
     const facturaExistente = await this.db.query(
       'SELECT codigo FROM factura WHERE cita_codigo = $1',
       [citaId]
@@ -32,21 +32,19 @@ export class FacturacionService {
       throw new BadRequestException('Ya existe una factura generada para esta cita.');
     }
 
-    // 3. Obtener prepago (lo que el cliente pagó al agendar)
+    //Obtener prepago
     const pagoPrevio = await this.db.query(
       'SELECT monto FROM pago WHERE cita_codigo = $1 LIMIT 1',
       [citaId]
     );
-    const montoPrepagado =
-      pagoPrevio.rows.length > 0
-        ? Math.max(0, Number(pagoPrevio.rows[0].monto || 0))
-        : 0;
+    const montoPrepagado = pagoPrevio.rows.length > 0
+      ? Math.max(0, Number(pagoPrevio.rows[0].monto || 0))
+      : 0;
 
-    // 4. Calcular total de servicios de la cita
+    //Calcular servicios
     const serviciosCita = await this.db.query(
-      `SELECT s.precio
-       FROM cita_servicios cs
-       JOIN servicio s ON cs.servicio_codigo = s.codigo
+      `SELECT s.precio FROM cita_servicios cs 
+       JOIN servicio s ON cs.servicio_codigo = s.codigo 
        WHERE cs.cita_codigo = $1`,
       [citaId]
     );
@@ -55,63 +53,68 @@ export class FacturacionService {
       0
     );
 
-    // 5. Calcular total de medicamentos adicionales despachados
-    //    El precio se toma desde la DB (producto.precio), no del DTO,
-    //    para evitar manipulación de precios desde el cliente.
+    // obtener precio base
     let totalMedicamentos = 0;
     for (const med of medicamentosAdicionales) {
       if (med.cantidad <= 0) {
         throw new BadRequestException('La cantidad de medicamentos debe ser mayor a cero.');
       }
-
-      const productoQuery = await this.db.query(
-        'SELECT codigo, precio, stock FROM producto WHERE codigo = $1',
-        [med.productoId]
-      );
-      if (!productoQuery || productoQuery.rows.length === 0) {
-        throw new NotFoundException(`El producto con id ${med.productoId} no existe en el inventario.`);
+      const prodBase = await this.db.query('SELECT precio FROM producto WHERE codigo = $1', [med.productoId]);
+      if (!prodBase || prodBase.rows.length === 0) {
+        throw new NotFoundException(`El producto con id ${med.productoId} no existe.`);
       }
-
-      const producto = productoQuery.rows[0];
-      if (producto.stock < med.cantidad) {
-        throw new BadRequestException(
-          `Stock insuficiente para el producto ${med.productoId}. Disponible: ${producto.stock}, solicitado: ${med.cantidad}.`
-        );
-      }
-
-      totalMedicamentos += Number(producto.precio) * med.cantidad;
+      totalMedicamentos += Number(prodBase.rows[0].precio) * med.cantidad;
     }
 
-    // 6. Calcular totales
+    //Calcular totales de la factura
     const subtotalCalculado = totalServicios + totalMedicamentos;
-
     if (descuento > subtotalCalculado) {
-      throw new BadRequestException(
-        `El descuento ($${descuento}) no puede ser mayor que el subtotal ($${subtotalCalculado}).`
-      );
+      throw new BadRequestException(`El descuento ($${descuento}) no puede superar al subtotal.`);
     }
-
     const totalConDescuento = subtotalCalculado - descuento;
     const saldoPendiente = Math.max(0, totalConDescuento - montoPrepagado);
 
-    // 7. Insertar la factura
-    const nuevaFactura = await this.db.query(
-      `INSERT INTO factura (cita_codigo, cliente_codigo, total, descuento, prepagado, saldo_pendiente)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING *`,
-      [citaId, clienteCodigo, totalConDescuento, descuento, montoPrepagado, saldoPendiente]
-    );
-    const facturaCodigo = nuevaFactura.rows[0].codigo;
+    const client = await this.db.connect();
+    try {
+      await client.query('BEGIN');
 
-    // 8. Descontar stock de cada medicamento adicional
-    for (const med of medicamentosAdicionales) {
-      await this.db.query(
-        `UPDATE producto SET stock = stock - $1 WHERE codigo = $2`,
-        [med.cantidad, med.productoId]
+      //Insertar la factura
+      const nuevaFactura = await client.query(
+        `INSERT INTO factura (cita_codigo, cliente_codigo, total, descuento, prepagado, saldo_pendiente)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [citaId, clienteCodigo, totalConDescuento, descuento, montoPrepagado, saldoPendiente]
       );
-    }
 
-    return nuevaFactura.rows[0];
+      for (const med of medicamentosAdicionales) {
+    
+        const productoLock = await client.query(
+          'SELECT stock FROM producto WHERE codigo = $1 FOR UPDATE',
+          [med.productoId]
+        );
+        
+        const stockActual = productoLock.rows[0]?.stock ?? 0;
+
+        if (stockActual < med.cantidad) {
+          throw new BadRequestException(
+            `Stock insuficiente en el momento exacto de facturar para el producto ${med.productoId}. Disponible: ${stockActual}.`
+          );
+        }
+
+        await client.query(
+          `UPDATE producto SET stock = stock - $1 WHERE codigo = $2`,
+          [med.cantidad, med.productoId]
+        );
+      }
+
+      await client.query('COMMIT');
+      return nuevaFactura.rows[0];
+
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async anularFactura(id: string, anularFacturaDto: AnularFacturaDto) {
@@ -127,7 +130,6 @@ export class FacturacionService {
       throw new BadRequestException('La factura ya se encuentra anulada.');
     }
 
-    // El enunciado aclara: la anulación NO devuelve el inventario
     const facturaActualizada = await this.db.query(
       `UPDATE factura
        SET estado = 'anulada', motivo_anulado = $1
@@ -214,10 +216,75 @@ export class FacturacionService {
       throw new BadRequestException('Acceso denegado. Esta factura pertenece a otro cliente.');
     }
 
-    const encabezadoPdf = `%PDF-1.4\n%B&H_Veterinary_Invoice_Colors:[#48a378,#34795a,#c2e9ce]\n`;
-    const cuerpoDatos = `Factura:${factura.codigo}\nCliente:${factura.cliente_nombre}\nMascota:${factura.mascota_nombre}\n`;
-    const financieros = `Descuento:${factura.descuento}\nPrepagado:${factura.prepagado}\nTotal:${factura.total}\nSaldoPendiente:${factura.saldo_pendiente}\nEstado:${factura.estado}\n`;
+    const serviciosQuery = await this.db.query(
+      `SELECT s.nombre, s.precio
+       FROM cita_servicios cs
+       JOIN servicio s ON cs.servicio_codigo = s.codigo
+       WHERE cs.cita_codigo = $1`,
+      [factura.cita_codigo]
+    );
 
-    return Buffer.from(`${encabezadoPdf}${cuerpoDatos}${financieros}%%EOF`, 'utf-8');
+    // PDF real con PDFKit corregido para flujos de memoria asíncronos seguros
+    const PDFDocument = require('pdfkit');
+    const doc = new PDFDocument({ margin: 50 });
+    const chunks: any[] = [];
+
+    await new Promise<void>((resolve, reject) => {
+      doc.on('data', (chunk: any) => chunks.push(chunk));
+      doc.on('end', resolve);
+      doc.on('error', reject);
+
+      // Encabezado corporativo
+      doc
+        .fontSize(20)
+        .fillColor('#34795a')
+        .font('Helvetica-Bold')
+        .text('Breaze & Harold Veterinary System', { align: 'center' });
+      doc
+        .fontSize(12)
+        .fillColor('#555555')
+        .font('Helvetica')
+        .text('Factura de Atención Veterinaria', { align: 'center' });
+      doc.moveDown();
+
+      // Datos generales
+      doc
+        .fontSize(10)
+        .fillColor('#000000')
+        .text(`Factura N°: ${factura.codigo}`)
+        .text(`Fecha: ${new Date(factura.fecha).toLocaleDateString('es-CO')}`)
+        .text(`Estado: ${factura.estado.toUpperCase()}`)
+        .text(`Cliente: ${factura.cliente_nombre}`)
+        .text(`Mascota: ${factura.mascota_nombre}`);
+      doc.moveDown();
+
+      // Lista de Servicios
+      doc.fontSize(12).fillColor('#34795a').font('Helvetica-Bold').text('Servicios prestados', { underline: true });
+      doc.fontSize(10).fillColor('#000000').font('Helvetica');
+      doc.moveDown(0.3);
+      
+      for (const s of serviciosQuery.rows) {
+        const precio = Number(s.precio);
+        doc.text(`  • ${s.nombre}: $${precio.toLocaleString('es-CO')}`);
+      }
+      doc.moveDown();
+
+      // Resumen financiero consolidado
+      doc.fontSize(12).fillColor('#34795a').font('Helvetica-Bold').text('Resumen Económico', { underline: true });
+      doc.fontSize(10).fillColor('#000000').font('Helvetica');
+      doc.moveDown(0.3);
+
+      doc
+        .text(`Subtotal:           $${(Number(factura.total) + Number(factura.descuento)).toLocaleString('es-CO')}`)
+        .text(`Descuento:        -$${Number(factura.descuento).toLocaleString('es-CO')}`)
+        .text(`Prepagado:        -$${Number(factura.prepagado).toLocaleString('es-CO')}`)
+        .font('Helvetica-Bold')
+        .text(`Saldo pendiente:   $${Number(factura.saldo_pendiente).toLocaleString('es-CO')}`)
+        .text(`Total factura:      $${Number(factura.total).toLocaleString('es-CO')}`);
+
+      doc.end();
+    });
+
+    return Buffer.concat(chunks);
   }
 }

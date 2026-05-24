@@ -8,7 +8,6 @@ import * as PDFDocument from 'pdfkit';
 
 @Injectable()
 export class ReportesPdfService {
-  // Usamos un casteo flexible 'any' interno para blindar el código ante fallos de indexación de tipos
   private prismaClient: any;
 
   constructor(private readonly prisma: PrismaService) {
@@ -27,15 +26,14 @@ export class ReportesPdfService {
   async generarCitasReport(dto: DateRangeDto): Promise<PDFKit.PDFDocument> {
     const { dateInicio, dateFin } = this.parseDates(dto.fechaInicio, dto.fechaFin);
 
-    // Consulta adaptada estrictamente al esquema: cita -> cliente/mascotas/usuario(veterinario)
     const citas = await this.prismaClient.cita.findMany({
       where: {
         fecha: { gte: dateInicio, lte: dateFin }
       },
       include: {
         cliente: { include: { usuario: true } },
-        mascota: true, // Relación directa al modelo 'mascotas'
-        usuario: true  // El usuario/veterinario que atiende la cita
+        mascota: true, 
+        usuario: true  
       },
       orderBy: { fecha: 'asc' }
     });
@@ -60,7 +58,6 @@ export class ReportesPdfService {
   async generarFacturacionReport(dto: DateRangeDto): Promise<PDFKit.PDFDocument> {
     const { dateInicio, dateFin } = this.parseDates(dto.fechaInicio, dto.fechaFin);
 
-    // Consulta adaptada al modelo 'factura'
     const facturas = await this.prismaClient.factura.findMany({
       where: {
         fecha: { gte: dateInicio, lte: dateFin }
@@ -97,7 +94,6 @@ export class ReportesPdfService {
 
     PdfGeneratorHelper.generateTable(doc, headers, rows, widths);
 
-    // Formateo de totales consolidados usando la paleta corporativa
     doc.moveDown(1.5)
        .fontSize(10)
        .fillColor(REPORTES_COLORS.VERDE_OSCURO)
@@ -105,13 +101,12 @@ export class ReportesPdfService {
        .text(`TOTAL FACTURADO EN PERÍODO: $${totalFacturado.toFixed(2)}`, { align: 'right' })
        .text(`TOTAL DESCUENTOS APLICADOS: $${totalDescuentos.toFixed(2)}`, { align: 'right' });
 
-    doc.font('Helvetica'); // Resetear fuente estándar
+    doc.font('Helvetica'); 
     PdfGeneratorHelper.finalizeAndPaging(doc);
     return doc;
   }
 
   async generarInventarioReport(): Promise<PDFKit.PDFDocument> {
-    // Consulta adaptada al modelo 'producto'
     const productos = await this.prismaClient.producto.findMany({
       orderBy: { nombre: 'asc' }
     });
@@ -150,22 +145,52 @@ export class ReportesPdfService {
   async generarHistorialReport(dto: DateRangeDto): Promise<PDFKit.PDFDocument> {
     this.parseDates(dto.fechaInicio, dto.fechaFin);
 
-    const mockAuditLogs = [
-      { usuario: 'Carlos Admin', rol: 'ADMIN', accion: 'Aprobación de cuenta de veterinario nuevo', fecha: dto.fechaInicio, hora: '08:30 AM' },
-      { usuario: 'Diana Admin', rol: 'ADMIN', accion: 'Modificación de parámetros de stock crítico', fecha: dto.fechaFin, hora: '04:15 PM' }
-    ];
+    const auditUrl = process.env.AUDIT_URL;
+    if (!auditUrl) {
+      throw new BadRequestException('La URL del servicio de auditoría no está configurada.');
+    }
+
+    const params = new URLSearchParams({
+      fechaInicio: dto.fechaInicio,
+      fechaFin: dto.fechaFin,
+    });
+
+    let auditLogs: any[] = [];
+    try {
+      const response = await fetch(`${auditUrl}?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error(`bh-audit respondió con status ${response.status}`);
+      }
+      auditLogs = await response.json();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Error desconocido';
+      throw new BadRequestException(
+        `No se pudo obtener el historial de auditoría: ${message}`
+      );
+    }
 
     const doc = PdfGeneratorHelper.createBaseDocument(`Reporte de Auditoría: Historial de Acciones`);
     const headers = ['Nombre de Usuario', 'Rol', 'Acción Ejecutada', 'Fecha', 'Hora'];
     const widths = [110, 60, 200, 80, 80];
 
-    const rows = mockAuditLogs.map(log => [
-      log.usuario,
-      log.rol,
-      log.accion,
-      log.fecha,
-      log.hora
-    ]);
+    const rows = auditLogs.map((log: any) => {
+      const fechaDate = log.timestamp ? new Date(log.timestamp) : null;
+      
+      let horaFormateada = 'N/A';
+      if (fechaDate) {
+        const hh = String(fechaDate.getHours()).padStart(2, '0');
+        const mm = String(fechaDate.getMinutes()).padStart(2, '0');
+        horaFormateada = `${hh}:${mm}`;
+      }
+
+      return [
+        log.userId || 'N/A',
+        log.userRole || 'N/A',
+        log.action || 'N/A',
+        fechaDate ? fechaDate.toISOString().split('T')[0] : 'N/A',
+        horaFormateada
+      ];
+    });
 
     PdfGeneratorHelper.generateTable(doc, headers, rows, widths);
     PdfGeneratorHelper.finalizeAndPaging(doc);
