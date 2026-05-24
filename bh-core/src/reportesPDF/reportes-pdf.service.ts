@@ -150,7 +150,6 @@ export class ReportesPdfService {
   async generarHistorialReport(dto: DateRangeDto): Promise<PDFKit.PDFDocument> {
     this.parseDates(dto.fechaInicio, dto.fechaFin);
 
-    // Mock estructurado de bh-audit debido a su arquitectura desacoplada de trazabilidad
     const mockAuditLogs = [
       { usuario: 'Carlos Admin', rol: 'ADMIN', accion: 'Aprobación de cuenta de veterinario nuevo', fecha: dto.fechaInicio, hora: '08:30 AM' },
       { usuario: 'Diana Admin', rol: 'ADMIN', accion: 'Modificación de parámetros de stock crítico', fecha: dto.fechaFin, hora: '04:15 PM' }

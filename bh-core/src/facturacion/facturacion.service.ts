@@ -9,76 +9,68 @@ export class FacturacionService {
   async generarFactura(crearFacturaDto: CrearFacturaDto) {
     const { citaId, descuento = 0, medicamentosAdicionales = [] } = crearFacturaDto;
 
-    //Validación inicial del descuento
     if (descuento < 0) {
       throw new BadRequestException('El valor del descuento no puede ser un número negativo.');
     }
 
-    //Validar si la cita existe
-    const cita = await this.db.query('SELECT * FROM cita WHERE codigo = $1', [citaId]);
-    if (!cita || cita.rows.length === 0) {
+    //Validar la cita y obtener el cliente_codigo asociado a ella
+    const citaQuery = await this.db.query(
+      `SELECT c.*, m.usuario_codigo AS cliente_codigo 
+       FROM cita c
+       JOIN mascota m ON c.mascota_codigo = m.codigo
+       WHERE c.codigo = $1`, 
+      [citaId]
+    );
+    
+    if (!citaQuery || citaQuery.rows.length === 0) {
       throw new NotFoundException('La cita médica especificada no existe.');
     }
+    const cita = citaQuery.rows[0];
+    const clienteCodigo = cita.cliente_codigo;
 
-    //Buscar pago previo registrado
+    //Buscar pago previo 
     const pagoPrevio = await this.db.query(
       'SELECT monto FROM pago WHERE cita_codigo = $1 LIMIT 1',
       [citaId]
     );
-    
-    // Forzamos que el pago previo sea un número válido y nunca menor a cero
-    const montoPrevioPago = pagoPrevio.rows.length > 0 ? Math.max(0, Number(pagoPrevio.rows[0].monto || 0)) : 0;
+    const montoPrepagado = pagoPrevio.rows.length > 0 ? Math.max(0, Number(pagoPrevio.rows[0].monto || 0)) : 0;
 
-    //Calcular subtotal de servicios
+    //Calcular costos de servicios
     const serviciosCita = await this.db.query(
       `SELECT s.precio FROM cita_servicios cs 
        JOIN servicio s ON cs.servicio_codigo = s.codigo 
        WHERE cs.cita_codigo = $1`,
       [citaId]
     );
-    const subtotalServicios = serviciosCita.rows.reduce((sum: number, s: any) => {
-      const precioServicio = Number(s.precio || 0);
-      return sum + (precioServicio > 0 ? precioServicio : 0); // Evita precios negativos en la BD
-    }, 0);
+    const totalServicios = serviciosCita.rows.reduce((sum: number, s: any) => sum + Math.max(0, Number(s.precio || 0)), 0);
 
-    //Calcular subtotal de medicamentos adicionales con validación
-    let subtotalMedicamentos = 0;
+    //Calcular costos de medicamentos adicionales
+    let totalMedicamentos = 0;
     for (const med of medicamentosAdicionales) {
-      //Cantidades y precios consistentes
-      if (med.cantidad <= 0) {
-        throw new BadRequestException(`La cantidad del producto ${med.productoId} debe ser mayor a cero.`);
+      if (med.cantidad <= 0 || med.precioUnitario < 0) {
+        throw new BadRequestException('Cantidades o precios de medicamentos inválidos.');
       }
-      if (med.precioUnitario < 0) {
-        throw new BadRequestException(`El precio unitario del producto ${med.productoId} no puede ser negativo.`);
-      }
-      subtotalMedicamentos += (med.cantidad * med.precioUnitario);
+      totalMedicamentos += (med.cantidad * med.precioUnitario);
     }
 
-    const subtotal = subtotalServicios + subtotalMedicamentos;
+    const subtotalCalculado = totalServicios + totalMedicamentos;
 
-    //El descuento no puede superar el 100% del subtotal
-    if (descuento > subtotal) {
-      throw new BadRequestException(`El descuento ($${descuento}) no puede ser mayor que el subtotal acumulado ($${subtotal}).`);
+    if (descuento > subtotalCalculado) {
+      throw new BadRequestException(`El descuento ($${descuento}) no puede ser mayor que el subtotal ($${subtotalCalculado}).`);
     }
 
-    // Cálculo del total intermedio tras aplicar el descuento
-    const totalConDescuento = subtotal - descuento;
+    const totalConDescuento = subtotalCalculado - descuento;
+    const totalFinal = Math.max(0, totalConDescuento - montoPrepagado);
+    const saldoPendiente = totalFinal;
 
-    // El total final es lo que queda tras restar el pago previo. 
-    // garantizar que no sea negativo si el cliente pagó de más al agendar.
-    const totalFinal = Math.max(0, totalConDescuento - montoPrevioPago);
-    
-    // El saldo restante sigue la misma regla de consistencia
-    const saldoRestante = totalFinal;
-
-    //Insertar la nueva factura 
+    // Inserción SQL adaptada
     const nuevaFactura = await this.db.query(
-      `INSERT INTO factura (cita_codigo, subtotal, descuento, monto_previo_pago, total, saldo_restante, estado)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [citaId, subtotal, descuento, montoPrevioPago, totalFinal, saldoRestante, 'pendiente']
+      `INSERT INTO factura (cita_codigo, cliente_codigo, total, descuento, prepagado, saldo_pendiente)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [citaId, clienteCodigo, totalFinal, descuento, montoPrepagado, saldoPendiente]
     );
 
-    // Insertar medicamentos
+    //Insertar medicamentos
     for (const med of medicamentosAdicionales) {
       await this.db.query(
         `INSERT INTO detalle_factura_medicamento (factura_codigo, producto_id, cantidad, precio_unitario)
@@ -100,10 +92,9 @@ export class FacturacionService {
     if (!factura || factura.rows.length === 0) throw new NotFoundException('La factura no existe.');
     if (factura.rows[0].estado === 'anulada') throw new BadRequestException('La factura ya se encuentra anulada.');
 
-    // Modificar el estado a anulada y registrar el motivo 
     const facturaActualizada = await this.db.query(
       `UPDATE factura 
-       SET estado = 'anulada', motivo_anulacion = $1 
+       SET estado = 'anulada', motivo_allowed = $1 
        WHERE codigo = $2 RETURNING *`,
       [anularFacturaDto.motivoAnulacion, id]
     );
@@ -124,7 +115,6 @@ export class FacturacionService {
 
     const facturaReal = factura.rows[0];
 
-    // Control estricto de flujo de estados
     if (facturaReal.estado === 'pagada') {
       throw new BadRequestException('La factura ya ha sido pagada previamente.');
     }
@@ -135,10 +125,10 @@ export class FacturacionService {
       throw new BadRequestException('Solo las facturas en estado pendiente pueden marcarse como pagadas.');
     }
 
-    //Actualizar el estado a 'pagada' y registrar marca de tiempo 
+    // Actualizar el estado
     const facturaPagada = await this.db.query(
       `UPDATE factura 
-       SET estado = 'pagada', fecha_pago = NOW() 
+       SET estado = 'pagada', saldo_pendiente = 0 
        WHERE codigo = $1 RETURNING *`,
       [id]
     );
@@ -150,7 +140,6 @@ export class FacturacionService {
     let query = 'SELECT * FROM factura';
     const params: any[] = [];
 
-    // Si la recepcionista seleccionó un filtro válido, se aplica a la consulta SQL
     if (estado) {
       const estadoLimpio = estado.toLowerCase().trim();
       if (['pendiente', 'pagada', 'anulada'].includes(estadoLimpio)) {
@@ -159,7 +148,6 @@ export class FacturacionService {
       }
     }
 
-    // Ordena por fecha de creación o código para que la UI lo muestre organizado
     query += ' ORDER BY codigo DESC';
 
     const resultado = await this.db.query(query, params);
@@ -167,14 +155,13 @@ export class FacturacionService {
   }
 
   async generarFacturaPdf(facturaId: string, clienteId: string): Promise<Buffer> {
-    // Obtener la factura junto con los datos de la cita y el usuario
-    // validar la pertenencia del registro al cliente logueado
     const facturaQuery = await this.db.query(
-      `SELECT f.*, c.mascota_codigo, m.nombre AS mascota_nombre, u.codigo AS cliente_codigo, u.nombre AS cliente_nombre
+      `SELECT f.*, u.nombre AS cliente_nombre, m.nombre AS mascota_nombre
        FROM factura f
+       JOIN cliente cl ON f.cliente_codigo = cl.codigo
+       JOIN usuario u ON cl.usuario_codigo = u.codigo
        JOIN cita c ON f.cita_codigo = c.codigo
-       JOIN mascota m ON c.mascota_codigo = m.codigo
-       JOIN usuario u ON m.usuario_codigo = u.codigo
+       JOIN mascotas m ON c.mascota_codigo = m.codigo
        WHERE f.codigo = $1`,
       [facturaId]
     );
@@ -184,37 +171,17 @@ export class FacturacionService {
     }
 
     const factura = facturaQuery.rows[0];
- 
-    // Compara el usuario_codigo dueño de la mascota con el cliente autenticado en la sesión
+
+    // Validación de seguridad
     if (factura.cliente_codigo !== clienteId) {
-      throw new BadRequestException('Acceso denegado. No tienes permisos para descargar esta factura.');
+      throw new BadRequestException('Acceso denegado. Esta factura pertenece a otro cliente.');
     }
 
-    // Traer los servicios prestados en la cita
-    const servicios = await this.db.query(
-      `SELECT s.nombre, s.precio 
-       FROM cita_servicios cs
-       JOIN servicio s ON cs.servicio_codigo = s.codigo
-       WHERE cs.cita_codigo = $1`,
-      [factura.cita_codigo]
-    );
-
-    // Traer medicamentos adicionales despachados
-    const medicamentos = await this.db.query(
-      `SELECT producto_id, cantidad, precio_unitario 
-       FROM detalle_factura_medicamento 
-       WHERE factura_codigo = $1`,
-      [facturaId]
-    );
-
-    //Construcción del Buffer del documento PDF 
-    const encabezadoPdf = `%PDF-1.4\n%B&H_Veterinary_System_Invoice_Colors:[#48a378,#34795a,#c2e9ce]\n`;
-    const cuerpoDatos = `Factura:${factura.codigo}\nClinica:B&H_Veterinary\nCliente:${factura.cliente_nombre}\nMascota:${factura.mascota_nombre}\n`;
-    const financieros = `Subtotal:${factura.subtotal}\nDescuento:${factura.descuento}\nPrevio:${factura.monto_previo_pago}\nTotal:${factura.total}\nEstado:${factura.estado}\n`;
+    // Estructura del PDF adaptada a las columnas reales del esquema
+    const encabezadoPdf = `%PDF-1.4\n%B&H_Veterinary_Invoice_Colors:[#48a378,#34795a,#c2e9ce]\n`;
+    const cuerpoDatos = `Factura:${factura.codigo}\nCliente:${factura.cliente_nombre}\nMascota:${factura.mascota_nombre}\n`;
+    const financieros = `Descuento:${factura.descuento}\nPrepagado:${factura.prepagado}\nTotal:${factura.total}\nSaldoPendiente:${factura.saldo_pendiente}\nEstado:${factura.estado}\n`;
     
-    const stringEstructura = `${encabezadoPdf}${cuerpoDatos}${financieros}%%EOF`;
-    
-    return Buffer.from(stringEstructura, 'utf-8');
+    return Buffer.from(`${encabezadoPdf}${cuerpoDatos}${financieros}%%EOF`, 'utf-8');
   }
-
 }

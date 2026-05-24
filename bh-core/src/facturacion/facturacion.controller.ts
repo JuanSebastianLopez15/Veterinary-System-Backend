@@ -17,32 +17,30 @@ export class FacturacionController {
     return this.facturacionService.generarFactura(crearFacturaDto);
   }
 
-  @Get()
-  @Roles('RECEPCIONISTA') // Solo la recepcionista tiene acceso
-  async obtenerFacturas(@Query('estado') estado?: string) {
-    return this.facturacionService.consultarFacturas(estado);
-  }
-
   @Get('mis-facturas/:id/pdf')
-  @Roles('CLIENTE') // Restricción de acceso estricta para Clientes
+  @Roles('CLIENTE') //acceso para Clientes
   async descargarPdf(
     @Param('id', ParseUUIDPipe) id: string,
-    @Req() req: any, // Captura la petición para extraer el ID del cliente autenticado
-    @Res() res: any  // Captura la respuesta nativa para enviar el flujo del archivo
+    @Req() req: any, 
+    @Res() res: any 
   ) {
     const clienteId = req.user.codigo; 
 
     const pdfBuffer = await this.facturacionService.generarFacturaPdf(id, clienteId);
 
-    // Configuracion las cabeceras HTTP para que el navegador descargue el archivo automáticamente
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `attachment; filename=factura-${id}.pdf`,
       'Content-Length': pdfBuffer.length,
     });
 
-    // archivo binario
     res.end(pdfBuffer);
+  }
+
+  @Get()
+  @Roles('RECEPCIONISTA') // Solo la recepcionista tiene acceso
+  async obtenerFacturas(@Query('estado') estado?: string) {
+    return this.facturacionService.consultarFacturas(estado);
   }
 
   @Patch(':id/anular')
