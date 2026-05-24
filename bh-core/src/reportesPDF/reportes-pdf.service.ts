@@ -8,7 +8,6 @@ import * as PDFDocument from 'pdfkit';
 
 @Injectable()
 export class ReportesPdfService {
-  // Usamos un casteo flexible 'any' interno para blindar el código ante fallos de indexación de tipos
   private prismaClient: any;
 
   constructor(private readonly prisma: PrismaService) {
@@ -27,15 +26,14 @@ export class ReportesPdfService {
   async generarCitasReport(dto: DateRangeDto): Promise<PDFKit.PDFDocument> {
     const { dateInicio, dateFin } = this.parseDates(dto.fechaInicio, dto.fechaFin);
 
-    // Consulta adaptada estrictamente al esquema: cita -> cliente/mascotas/usuario(veterinario)
     const citas = await this.prismaClient.cita.findMany({
       where: {
         fecha: { gte: dateInicio, lte: dateFin }
       },
       include: {
         cliente: { include: { usuario: true } },
-        mascota: true, // Relación directa al modelo 'mascotas'
-        usuario: true  // El usuario/veterinario que atiende la cita
+        mascota: true, 
+        usuario: true  
       },
       orderBy: { fecha: 'asc' }
     });
@@ -60,7 +58,6 @@ export class ReportesPdfService {
   async generarFacturacionReport(dto: DateRangeDto): Promise<PDFKit.PDFDocument> {
     const { dateInicio, dateFin } = this.parseDates(dto.fechaInicio, dto.fechaFin);
 
-    // Consulta adaptada al modelo 'factura'
     const facturas = await this.prismaClient.factura.findMany({
       where: {
         fecha: { gte: dateInicio, lte: dateFin }
@@ -97,7 +94,6 @@ export class ReportesPdfService {
 
     PdfGeneratorHelper.generateTable(doc, headers, rows, widths);
 
-    // Formateo de totales consolidados usando la paleta corporativa
     doc.moveDown(1.5)
        .fontSize(10)
        .fillColor(REPORTES_COLORS.VERDE_OSCURO)
@@ -105,13 +101,12 @@ export class ReportesPdfService {
        .text(`TOTAL FACTURADO EN PERÍODO: $${totalFacturado.toFixed(2)}`, { align: 'right' })
        .text(`TOTAL DESCUENTOS APLICADOS: $${totalDescuentos.toFixed(2)}`, { align: 'right' });
 
-    doc.font('Helvetica'); // Resetear fuente estándar
+    doc.font('Helvetica'); 
     PdfGeneratorHelper.finalizeAndPaging(doc);
     return doc;
   }
 
   async generarInventarioReport(): Promise<PDFKit.PDFDocument> {
-    // Consulta adaptada al modelo 'producto'
     const productos = await this.prismaClient.producto.findMany({
       orderBy: { nombre: 'asc' }
     });
