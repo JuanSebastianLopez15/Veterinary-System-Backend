@@ -148,24 +148,85 @@ export class ReportesPdfService {
   }
 
   async generarHistorialReport(dto: DateRangeDto): Promise<PDFKit.PDFDocument> {
-    this.parseDates(dto.fechaInicio, dto.fechaFin);
+    const { dateInicio, dateFin } = this.parseDates(dto.fechaInicio, dto.fechaFin);
 
-    const mockAuditLogs = [
-      { usuario: 'Carlos Admin', rol: 'ADMIN', accion: 'Aprobación de cuenta de veterinario nuevo', fecha: dto.fechaInicio, hora: '08:30 AM' },
-      { usuario: 'Diana Admin', rol: 'ADMIN', accion: 'Modificación de parámetros de stock crítico', fecha: dto.fechaFin, hora: '04:15 PM' }
-    ];
+    const auditUrl = process.env.AUDIT_URL || 'http://localhost:3001/api/v1/audit/events';
+    
+    // Configurar endDate al final del día
+    const endDate = new Date(dateFin);
+    endDate.setHours(23, 59, 59, 999);
+
+    const params = new URLSearchParams({
+      startDate: dateInicio.toISOString(),
+      endDate: endDate.toISOString(),
+      limit: '100'
+    });
+
+    let auditLogs: any[] = [];
+    try {
+      const response = await fetch(`${auditUrl}?${params.toString()}`);
+      if (response.ok) {
+        const body = await response.json();
+        auditLogs = body.data || [];
+      } else {
+        console.warn('Failed to fetch from bh-audit:', await response.text());
+      }
+    } catch (e: any) {
+      console.error('Error fetching audit logs:', e.message);
+    }
+
+    // Obtener nombres de usuario reales de la BD
+    const userIds = [...new Set(auditLogs.map((l: any) => l.userId).filter(Boolean))] as string[];
+    const users = await this.prismaClient.usuario.findMany({
+      where: { codigo: { in: userIds } },
+      select: { codigo: true, nombre: true, apellido: true }
+    });
+    const userMap = new Map();
+    users.forEach((u: any) => userMap.set(u.codigo, `${u.nombre} ${u.apellido}`.trim()));
+
+    const actionMap: Record<string, string> = {
+      REGISTRO_USUARIO: 'Registro de usuario',
+      VERIFICACION_CORREO: 'Verificación de correo',
+      APROBACION_CUENTA: 'Aprobación o rechazo de cuenta',
+      RECHAZO_CUENTA: 'Aprobación o rechazo de cuenta',
+      LOGIN_EXITOSO: 'Inicio de sesión exitoso',
+      LOGIN_FALLIDO: 'Intento de inicio de sesión fallido',
+      CREACION_CITA: 'Creación de cita',
+      CAMBIO_ESTADO_CITA: 'Cambio de estado de cita',
+      CREACION_HISTORIAL_MEDICO: 'Creación de historial médico',
+      EDICION_HISTORIAL_MEDICO: 'Edición de historial médico',
+      REGISTRO_VACUNA: 'Registro de vacuna',
+      INICIO_HOSPITALIZACION: 'Inicio de hospitalización',
+      ALTA_HOSPITALIZACION: 'Alta de hospitalización',
+      CREACION_FACTURA: 'Creación de factura',
+      ANULACION_FACTURA: 'Anulación de factura',
+      AJUSTE_INVENTARIO: 'Ajuste manual de inventario',
+      CREACION_SERVICIO: 'Creación o edición de servicio',
+      EDICION_SERVICIO: 'Creación o edición de servicio',
+      DESACTIVACION_SERVICIO: 'Desactivación de servicio',
+      PAGO_CITA_REGISTRADO: 'Pago de cita registrado',
+      SUSPENSION_USUARIO: 'Suspensión de usuario'
+    };
 
     const doc = PdfGeneratorHelper.createBaseDocument(`Reporte de Auditoría: Historial de Acciones`);
-    const headers = ['Nombre de Usuario', 'Rol', 'Acción Ejecutada', 'Fecha', 'Hora'];
-    const widths = [110, 60, 200, 80, 80];
+    const headers = ['Usuario', 'Rol', 'Acción Ejecutada', 'Fecha', 'Hora'];
+    const widths = [110, 65, 175, 70, 70];
 
-    const rows = mockAuditLogs.map(log => [
-      log.usuario,
-      log.rol,
-      log.accion,
-      log.fecha,
-      log.hora
-    ]);
+    const rows = auditLogs.map((log: any) => {
+      const d = new Date(log.timestamp);
+      const userName = log.userId ? (userMap.get(log.userId) || 'Desconocido') : 'Sistema / Anónimo';
+      const actionName = actionMap[log.action] || log.action;
+      const formattedDate = d.toISOString().split('T')[0];
+      const formattedTime = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      
+      return [
+        userName,
+        log.userRole || 'N/A',
+        actionName,
+        formattedDate,
+        formattedTime
+      ];
+    });
 
     PdfGeneratorHelper.generateTable(doc, headers, rows, widths);
     PdfGeneratorHelper.finalizeAndPaging(doc);
