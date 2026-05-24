@@ -63,3 +63,14 @@ chore:    Tareas de configuración o mantenimiento
 ```
 
 ---
+
+## Prerrequisitos
+
+| Herramienta | Versión mínima |
+|---|---|
+| Node.js | 18.x |
+| npm | 9.x |
+| Docker | 24.x |
+| PostgreSQL | 15.x |
+
+---
