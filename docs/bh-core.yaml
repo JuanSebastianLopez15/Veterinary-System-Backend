@@ -252,66 +252,198 @@ components:
     # --- Citas ---
     CreateAppointmentRequest:
       type: object
-      required: [petId, veterinarianId, scheduledAt, serviceIds, paymentMethod]
+      required: [usuarioCodigo, mascotaCodigo, clienteCodigo, fecha, hora, serviciosCodigos, metodoPago]
       properties:
-        petId:
+        usuarioCodigo:
           type: string
           format: uuid
-        veterinarianId:
+          description: Codigo del veterinario asignado. Solo recepcionista puede enviarlo en POST /appointments.
+        mascotaCodigo:
           type: string
           format: uuid
-        scheduledAt:
+        clienteCodigo:
           type: string
-          format: date-time
-        serviceIds:
+          format: uuid
+        fecha:
+          type: string
+          format: date
+          example: '2024-06-10'
+        hora:
+          type: string
+          example: '09:00'
+        serviciosCodigos:
           type: array
+          minItems: 1
           items:
             type: string
             format: uuid
-        paymentMethod:
+        metodoPago:
           type: string
-          enum: [efectivo, tarjeta, transferencia]
-    AppointmentResponse:
+          enum: [efectivo, tarjeta, transferencia, otro]
+    CreateClientAppointmentRequest:
+      type: object
+      required: [usuarioCodigo, mascotaCodigo, fecha, hora, serviciosCodigos, metodoPago]
+      properties:
+        usuarioCodigo:
+          type: string
+          format: uuid
+          description: Codigo del veterinario solicitado.
+        mascotaCodigo:
+          type: string
+          format: uuid
+        fecha:
+          type: string
+          format: date
+          example: '2024-06-10'
+        hora:
+          type: string
+          example: '09:00'
+        serviciosCodigos:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            format: uuid
+        metodoPago:
+          type: string
+          enum: [efectivo, tarjeta, transferencia, otro]
+    AppointmentServiceItem:
       type: object
       properties:
-        id:
+        codigo:
           type: string
           format: uuid
-        petId:
+        nombre:
           type: string
-          format: uuid
-        veterinarianId:
-          type: string
-          format: uuid
-        clientId:
-          type: string
-          format: uuid
-        scheduledAt:
-          type: string
-          format: date-time
-        status:
-          type: string
-          enum: [confirmada, en_atencion, finalizada, cancelada]
-        cancellationReason:
-          type: string
-        totalAmount:
+        precioUnitario:
           type: number
-        paymentId:
+    AppointmentPaymentResponse:
+      type: object
+      properties:
+        codigo:
           type: string
           format: uuid
-        createdAt:
+        monto:
+          type: number
+        metodoPago:
           type: string
-          format: date-time
-        services:
+          enum: [efectivo, tarjeta, transferencia, otro]
+        estado:
+          type: string
+          enum: [aprobado]
+          description: Pago mock aprobado registrado al crear la cita.
+        fecha:
+          type: string
+          format: date
+    CreatedAppointmentResponse:
+      type: object
+      properties:
+        codigo:
+          type: string
+          format: uuid
+        total:
+          type: number
+        estado:
+          type: string
+          enum: [confirmada]
+        servicios:
           type: array
           items:
-            $ref: '#/components/schemas/ServiceResponse'
+            $ref: '#/components/schemas/AppointmentServiceItem'
+        pago:
+          $ref: '#/components/schemas/AppointmentPaymentResponse'
+    DailyAgendaAppointmentResponse:
+      type: object
+      properties:
+        cita:
+          type: object
+          properties:
+            codigo:
+              type: string
+              format: uuid
+            fecha:
+              type: string
+              format: date
+            hora:
+              type: string
+              example: '09:00:00'
+        estado:
+          type: string
+          enum: [pendiente, confirmada, completada, cancelada]
+        total:
+          type: number
+        mascota:
+          type: object
+          properties:
+            codigo:
+              type: string
+              format: uuid
+            nombre:
+              type: string
+            especie:
+              type: string
+            raza:
+              type: string
+        cliente:
+          type: object
+          properties:
+            codigo:
+              type: string
+              format: uuid
+            usuarioCodigo:
+              type: string
+              format: uuid
+            nombre:
+              type: string
+            apellido:
+              type: string
+            correo:
+              type: string
+              format: email
+            ciudad:
+              type: string
+        servicios:
+          type: array
+          items:
+            $ref: '#/components/schemas/AppointmentServiceItem'
+    AppointmentStateResponse:
+      type: object
+      properties:
+        codigo:
+          type: string
+          format: uuid
+        usuarioCodigo:
+          type: string
+          format: uuid
+        mascotaCodigo:
+          type: string
+          format: uuid
+        clienteCodigo:
+          type: string
+          format: uuid
+        fecha:
+          type: string
+          format: date
+        hora:
+          type: string
+          example: '09:00:00'
+        estado:
+          type: string
+          enum: [pendiente, confirmada, completada, cancelada]
+        total:
+          type: number
+        motivoCancelacion:
+          type: string
+          nullable: true
+    AppointmentResponse:
+      $ref: '#/components/schemas/AppointmentStateResponse'
     CancelAppointmentRequest:
       type: object
-      required: [reason]
+      required: [motivo]
       properties:
-        reason:
+        motivo:
           type: string
+          minLength: 1
 
     # --- Historiales Clinicos ---
     CreateMedicalRecordRequest:
@@ -1275,7 +1407,10 @@ paths:
   /appointments:
     post:
       tags: [Appointments]
-      summary: Agendar cita
+      summary: Agendar cita por recepcionista
+      description: Requiere JWT con rol RECEPCIONISTA. La cita queda confirmada solo si el pago mock aprobado se registra en la misma transaccion.
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -1284,82 +1419,135 @@ paths:
               $ref: '#/components/schemas/CreateAppointmentRequest'
       responses:
         '201':
-          description: Cita agendada (requiere pago)
+          description: Cita confirmada con pago aprobado registrado
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AppointmentResponse'
+                $ref: '#/components/schemas/CreatedAppointmentResponse'
+        '400':
+          description: Solicitud invalida, pago faltante/invalido, veterinario invalido o servicio inactivo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Token ausente o invalido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Rol no autorizado o mascota no pertenece al cliente indicado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '409':
-          description: Cruce de horarios
+          description: Veterinario ocupado en la fecha y hora solicitadas
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-        '422':
-          description: Pago no proporcionado
+  /appointments/client:
+    post:
+      tags: [Appointments]
+      summary: Agendar cita para la mascota del cliente autenticado
+      description: Requiere JWT con rol CLIENTE. El cliente no envia clienteCodigo; se deriva desde el token y la mascota debe pertenecerle.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateClientAppointmentRequest'
+      responses:
+        '201':
+          description: Cita confirmada con pago aprobado registrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedAppointmentResponse'
+        '400':
+          description: Solicitud invalida, pago faltante/invalido, veterinario invalido o servicio inactivo
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Token ausente o invalido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Rol no autorizado, cliente sin cuenta asociada o mascota ajena
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Veterinario ocupado en la fecha y hora solicitadas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /appointments/daily-agenda:
     get:
       tags: [Appointments]
-      summary: Listar citas
+      summary: Consultar agenda diaria
+      description: Requiere JWT con rol RECEPCIONISTA o VETERINARIO. El veterinario solo puede consultar su propia agenda.
+      security:
+        - bearerAuth: []
       parameters:
-        - name: mine
+        - name: veterinarioCodigo
           in: query
-          description: Si es true, retorna solo las citas del usuario autenticado
-          required: false
-          schema:
-            type: boolean
-      responses:
-        '200':
-          description: Lista de citas
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PaginatedAppointmentsResponse'
-  /appointments/{id}:
-    get:
-      tags: [Appointments]
-      summary: Detalle de cita
-      parameters:
-        - name: id
-          in: path
           required: true
           schema:
             type: string
             format: uuid
-      responses:
-        '200':
-          description: Cita encontrada
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AppointmentResponse'
-  /appointments/{id}/attend:
-    patch:
-      tags: [Appointments]
-      summary: Marcar cita en atención
-      parameters:
-        - name: id
-          in: path
+        - name: fecha
+          in: query
           required: true
           schema:
             type: string
-            format: uuid
+            format: date
       responses:
         '200':
-          description: Cita en atención
+          description: Agenda diaria del veterinario
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AppointmentResponse'
-  /appointments/{id}/complete:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DailyAgendaAppointmentResponse'
+        '400':
+          description: veterinarioCodigo y fecha son obligatorios o invalidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Token ausente o invalido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Rol no autorizado o veterinario consultando agenda ajena
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /appointments/{codigo}/complete:
     patch:
       tags: [Appointments]
       summary: Finalizar cita
+      description: Requiere JWT con rol VETERINARIO. Solo el veterinario asignado puede finalizar citas confirmadas y con pago registrado.
+      security:
+        - bearerAuth: []
       parameters:
-        - name: id
+        - name: codigo
           in: path
           required: true
           schema:
@@ -1371,13 +1559,46 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AppointmentResponse'
-  /appointments/{id}/cancel:
+                $ref: '#/components/schemas/AppointmentStateResponse'
+        '400':
+          description: Codigo invalido o faltante
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Token ausente o invalido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Rol no autorizado o veterinario no asignado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Cita no encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Cita cancelada, ya finalizada, no confirmada o sin pago registrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /appointments/{codigo}/cancel:
     patch:
       tags: [Appointments]
       summary: Cancelar cita
+      description: Requiere JWT con rol CLIENTE, RECEPCIONISTA o VETERINARIO. Cliente solo cancela citas propias y veterinario solo citas asignadas.
+      security:
+        - bearerAuth: []
       parameters:
-        - name: id
+        - name: codigo
           in: path
           required: true
           schema:
@@ -1395,7 +1616,37 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AppointmentResponse'
+                $ref: '#/components/schemas/AppointmentStateResponse'
+        '400':
+          description: Motivo obligatorio o codigo invalido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Token ausente o invalido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Rol no autorizado o usuario sin permiso sobre la cita
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Cita no encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Cita ya cancelada o finalizada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /appointments/{appointmentId}/medical-records:
     post:
