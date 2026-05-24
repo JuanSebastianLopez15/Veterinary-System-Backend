@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException, BadRequestException, Inject } from '@nestjs/common';
 import { CrearFacturaDto } from './dto/crear-factura.dto';
 import { AnularFacturaDto } from './dto/anular-factura.dto';
+import { PdfGeneratorHelper } from '../reportesPDF/helpers/pdf-generator.helper';
+import { REPORTES_COLORS } from '../reportesPDF/reportes-pdf.constants';
 
 @Injectable()
 export class FacturacionService {
@@ -59,7 +61,10 @@ export class FacturacionService {
       if (med.cantidad <= 0) {
         throw new BadRequestException('La cantidad de medicamentos debe ser mayor a cero.');
       }
-      const prodBase = await this.db.query('SELECT precio FROM producto WHERE codigo = $1', [med.productoId]);
+      const prodBase = await this.db.query(
+        'SELECT precio FROM producto WHERE codigo = $1',
+        [med.productoId]
+      );
       if (!prodBase || prodBase.rows.length === 0) {
         throw new NotFoundException(`El producto con id ${med.productoId} no existe.`);
       }
@@ -194,9 +199,7 @@ export class FacturacionService {
 
   async generarFacturaPdf(facturaId: string, clienteId: string): Promise<Buffer> {
     const facturaQuery = await this.db.query(
-      `SELECT f.*,
-              u.nombre AS cliente_nombre,
-              ms.nombre AS mascota_nombre
+      `SELECT f.*, u.nombre AS cliente_nombre, u.apellido AS cliente_apellido, m.nombre AS mascota_nombre
        FROM factura f
        JOIN cliente cl ON f.cliente_codigo = cl.codigo
        JOIN usuario u ON cl.usuario_codigo = u.codigo
@@ -216,75 +219,38 @@ export class FacturacionService {
       throw new BadRequestException('Acceso denegado. Esta factura pertenece a otro cliente.');
     }
 
-    const serviciosQuery = await this.db.query(
-      `SELECT s.nombre, s.precio
-       FROM cita_servicios cs
-       JOIN servicio s ON cs.servicio_codigo = s.codigo
-       WHERE cs.cita_codigo = $1`,
-      [factura.cita_codigo]
-    );
+    const doc = PdfGeneratorHelper.createBaseDocument(`Factura N° ${factura.codigo.substring(0,8).toUpperCase()}`);
+    
+    doc.fontSize(10)
+       .font('Helvetica')
+       .text(`Cliente: ${factura.cliente_nombre} ${factura.cliente_apellido || ''}`)
+       .text(`Mascota: ${factura.mascota_nombre}`)
+       .moveDown(1);
+       
+    const prepagado = Number(factura.prepagado) || 0;
+    const descuento = Number(factura.descuento) || 0;
+    const total = Number(factura.total) || 0;
+    const saldoPendiente = Number(factura.saldo_pendiente) || 0;
+       
+    doc.text(`Subtotal / Total Bruto: $${(total + descuento + prepagado).toFixed(2)}`)
+       .text(`Descuento: $${descuento.toFixed(2)}`)
+       .text(`Prepagado al agendar: $${prepagado.toFixed(2)}`)
+       .font('Helvetica-Bold')
+       .fillColor(REPORTES_COLORS.VERDE_OSCURO)
+       .text(`Total Facturado: $${total.toFixed(2)}`)
+       .text(`Saldo Pendiente: $${saldoPendiente.toFixed(2)}`)
+       .font('Helvetica')
+       .fillColor(REPORTES_COLORS.TEXTO_NEGRO)
+       .text(`Estado: ${factura.estado.toUpperCase()}`)
+       .moveDown(1);
+       
+    PdfGeneratorHelper.finalizeAndPaging(doc);
 
-    // PDF real con PDFKit corregido para flujos de memoria asíncronos seguros
-    const PDFDocument = require('pdfkit');
-    const doc = new PDFDocument({ margin: 50 });
-    const chunks: any[] = [];
-
-    await new Promise<void>((resolve, reject) => {
-      doc.on('data', (chunk: any) => chunks.push(chunk));
-      doc.on('end', resolve);
+    return new Promise<Buffer>((resolve, reject) => {
+      const buffers: Buffer[] = [];
+      doc.on('data', (chunk) => buffers.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(buffers)));
       doc.on('error', reject);
-
-      // Encabezado corporativo
-      doc
-        .fontSize(20)
-        .fillColor('#34795a')
-        .font('Helvetica-Bold')
-        .text('Breaze & Harold Veterinary System', { align: 'center' });
-      doc
-        .fontSize(12)
-        .fillColor('#555555')
-        .font('Helvetica')
-        .text('Factura de Atención Veterinaria', { align: 'center' });
-      doc.moveDown();
-
-      // Datos generales
-      doc
-        .fontSize(10)
-        .fillColor('#000000')
-        .text(`Factura N°: ${factura.codigo}`)
-        .text(`Fecha: ${new Date(factura.fecha).toLocaleDateString('es-CO')}`)
-        .text(`Estado: ${factura.estado.toUpperCase()}`)
-        .text(`Cliente: ${factura.cliente_nombre}`)
-        .text(`Mascota: ${factura.mascota_nombre}`);
-      doc.moveDown();
-
-      // Lista de Servicios
-      doc.fontSize(12).fillColor('#34795a').font('Helvetica-Bold').text('Servicios prestados', { underline: true });
-      doc.fontSize(10).fillColor('#000000').font('Helvetica');
-      doc.moveDown(0.3);
-      
-      for (const s of serviciosQuery.rows) {
-        const precio = Number(s.precio);
-        doc.text(`  • ${s.nombre}: $${precio.toLocaleString('es-CO')}`);
-      }
-      doc.moveDown();
-
-      // Resumen financiero consolidado
-      doc.fontSize(12).fillColor('#34795a').font('Helvetica-Bold').text('Resumen Económico', { underline: true });
-      doc.fontSize(10).fillColor('#000000').font('Helvetica');
-      doc.moveDown(0.3);
-
-      doc
-        .text(`Subtotal:           $${(Number(factura.total) + Number(factura.descuento)).toLocaleString('es-CO')}`)
-        .text(`Descuento:        -$${Number(factura.descuento).toLocaleString('es-CO')}`)
-        .text(`Prepagado:        -$${Number(factura.prepagado).toLocaleString('es-CO')}`)
-        .font('Helvetica-Bold')
-        .text(`Saldo pendiente:   $${Number(factura.saldo_pendiente).toLocaleString('es-CO')}`)
-        .text(`Total factura:      $${Number(factura.total).toLocaleString('es-CO')}`);
-
-      doc.end();
     });
-
-    return Buffer.concat(chunks);
   }
 }

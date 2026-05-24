@@ -28,8 +28,6 @@ Thumbs.db
 .idea/
 .vscode/
 
-# Claude Code
-.claude/
 *.suo
 *.ntvs*
 *.njsproj
