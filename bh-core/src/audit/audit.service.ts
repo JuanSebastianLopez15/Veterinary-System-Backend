@@ -4,12 +4,13 @@ import { ConfigService } from '@nestjs/config';
 
 interface AuditEventPayload {
   action: string;
-  userId: string | null;
-  userRole: string | null;
+  userId: string;
+  userRole: string;
   entityType: string;
-  entityId: string | null;
+  entityId?: string;
   details: Record<string, unknown>;
   ipAddress?: string;
+  timestamp?: string;
 }
 
 @Injectable()
@@ -25,10 +26,16 @@ export class AuditService {
 
   async emit(payload: AuditEventPayload): Promise<void> {
     try {
+      const auditPayload = {
+        ...payload,
+        ipAddress: payload.ipAddress ?? 'unknown',
+        timestamp: payload.timestamp ?? new Date().toISOString(),
+      };
+
       const response = await fetch(this.auditUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(auditPayload),
       });
 
       if (!response.ok) {
@@ -42,13 +49,12 @@ export class AuditService {
     }
   }
 
-  async log(data: { accion: string; usuarioCodigo: string | null; rol: string | null; detalle: string }): Promise<void> {
+  async log(data: { accion: string; usuarioCodigo: string; rol: string; detalle: string }): Promise<void> {
     this.emit({
       action: data.accion,
       userId: data.usuarioCodigo,
       userRole: data.rol,
       entityType: 'MEDICAL_HISTORY',
-      entityId: null,
       details: { message: data.detalle },
     });
   }
