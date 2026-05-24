@@ -76,10 +76,25 @@ model producto {
   stock             Int      @default(0)
   stock_minimo      Int
   precio            Float    @db.DoublePrecision
-  fecha_vencimiento DateTime @db.Date
+  fecha_vencimiento DateTime? @db.Date
   creado_en         DateTime @default(now()) @db.Timestamp(6)
 
   medicamentos_prescritos medicamento_prescrito[]
+  movimientos             movimiento_inventario[]
+}
+
+model movimiento_inventario {
+  codigo          String   @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar(50)
+  producto_codigo String   @db.VarChar(50)
+  tipo            String   @db.VarChar(40)
+  cantidad        Int
+  motivo          String?  @db.VarChar(255)
+  creado_por      String?  @db.VarChar(50)
+  creado_en       DateTime @default(now()) @db.Timestamp(6)
+
+  producto producto @relation(fields: [producto_codigo], references: [codigo])
+
+  @@index([producto_codigo])
 }
 
 model pago {
