@@ -1,0 +1,27 @@
+info:
+  name: CONSULTAR EVENTO
+  type: http
+  seq: 15
+
+http:
+  method: POST
+  url: http://localhost:3001/api/v1/audit/events
+  body:
+    type: json
+    data: |-
+      {
+        "action": "CREACION_SERVICIO",
+        "userRole": "admiDSDSDnistrador",
+        "entityType": "Service",
+        "details": {
+          "nombre": "Consulta General"
+        },
+        "timestamp": "2026-05-DSDS24T22:00:00.000Z"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

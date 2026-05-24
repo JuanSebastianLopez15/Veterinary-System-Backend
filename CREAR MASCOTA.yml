@@ -1,0 +1,27 @@
+info:
+  name: CREAR MASCOTA
+  type: http
+  seq: 6
+
+http:
+  method: POST
+  url: http://localhost:3000/api/v1/mascotas
+  body:
+    type: json
+    data: |-
+      {
+        "clienteCodigo": "cli-01",
+        "nombre": "RocCCWWky",
+        "especie": "PeWrro",
+        "raza": "Pitbull",
+        "color": "Negro",
+        "fechaNacimiento": "2022-05-10",
+        "peso": 20
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

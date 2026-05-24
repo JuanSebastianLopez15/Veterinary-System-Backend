@@ -1,0 +1,26 @@
+info:
+  name: REENVIO_CODIGO_VERIFICACION
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: http://localhost:3001/api/v1/audit/events
+  body:
+    type: json
+    data: |-
+      {
+        "action": "LOGIN",
+        "userId": "1",
+        "userRole": "ADMIN",
+        "entityType": "USER",
+        "entityId": "1",
+        "details": {}
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

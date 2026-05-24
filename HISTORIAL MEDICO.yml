@@ -1,0 +1,34 @@
+info:
+  name: HISTORIAL MEDICO
+  type: http
+  seq: 13
+
+http:
+  method: POST
+  url: http://localhost:3000/api/v1/appointments/123/medical-records
+  body:
+    type: json
+    data: |-
+      {
+        "visitReason": "Control general",
+        "diagnosis": "Paciente estable",
+        "treatment": "Ninguno",
+        "petWeight": 20,
+        "veterinarianId": "vet-001",
+        "prescriptions": [
+          {
+            "medicationName": "Amoxicilina",
+            "dosage": "1 cada 12h",
+            "duration": "5 días",
+            "inventoryProductId": "prod-123",
+            "quantity": 2
+          }
+        ]
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

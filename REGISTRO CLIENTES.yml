@@ -1,0 +1,27 @@
+info:
+  name: REGISTRO CLIENTES
+  type: http
+  seq: 12
+
+http:
+  method: POST
+  url: http://localhost:3000/api/v1/clientes
+  body:
+    type: json
+    data: |-
+      {
+        "nombre": "Juan",
+        "apellido": "Perez",
+        "correo": "juan@test.com",
+        "contrasena": "Test1234A",
+        "telefono": "3001234567",
+        "direccion": "Calle 123",
+        "ciudad": "Medellin"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

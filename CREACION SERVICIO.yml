@@ -1,0 +1,23 @@
+info:
+  name: CREACION SERVICIO
+  type: http
+  seq: 14
+
+http:
+  method: POST
+  url: http://localhost:3000/api/v1/services
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Consulta general",
+        "description": "Revisión veterinaria básica",
+        "price": 50000
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

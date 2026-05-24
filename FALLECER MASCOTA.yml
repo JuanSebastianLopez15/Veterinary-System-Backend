@@ -1,0 +1,15 @@
+info:
+  name: FALLECER MASCOTA
+  type: http
+  seq: 10
+
+http:
+  method: PATCH
+  url: http://localhost:3000/api/v1/mascotas/6df3380f-60a4-4097-a6e0-2a1641c08acd/fallecida
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

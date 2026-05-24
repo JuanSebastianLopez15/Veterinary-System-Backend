@@ -1,0 +1,27 @@
+info:
+  name: registro
+  type: http
+  seq: 4
+
+http:
+  method: POST
+  url: http://localhost:3000/api/v1/auth/register
+  body:
+    type: json
+    data: |-
+      
+      {
+        "nombre": "Adminxnn",
+        "apellido": "System",
+        "correo": "avillxaneda@bhcore.com",
+        "contrasena": "12345678Aa",
+        "telefono": "3001112233",
+        "rol": "CLIENTE"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
