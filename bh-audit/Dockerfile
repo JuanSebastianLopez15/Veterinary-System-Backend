@@ -30,4 +30,4 @@ COPY --from=builder /usr/src/app/node_modules/@prisma ./node_modules/@prisma
 EXPOSE 3001
 
 # Ejecutar prisma db push para crear/actualizar tablas y luego arrancar la app
-CMD ["sh", "-c", "npx prisma db push --skip-generate && node dist/main"]
+CMD ["sh", "-c", "npx prisma db push --url \"${DATABASE_URL}\" && node dist/src/main"]

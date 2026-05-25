@@ -22,74 +22,101 @@ components:
     # --- Auth ---
     RegisterRequest:
       type: object
-      required: [email, password, firstName, lastName, phone, role]
+      required: [nombre, apellido, correo, contrasena, telefono, rol]
       properties:
-        email:
+        nombre:
+          type: string
+          minLength: 3
+          maxLength: 50
+          example: Isabela
+        apellido:
+          type: string
+          minLength: 3
+          maxLength: 50
+          example: Quintero
+        correo:
           type: string
           format: email
-        password:
+          maxLength: 70
+          example: isabela@gmail.com
+        contrasena:
           type: string
           minLength: 8
-        firstName:
+          maxLength: 50
+          example: Segura123
+        telefono:
           type: string
-        lastName:
+          minLength: 10
+          maxLength: 10
+          example: "3001234567"
+        rol:
           type: string
-        phone:
-          type: string
-        role:
-          type: string
-          enum: [cliente, recepcionista, veterinario]
+          enum: [CLIENTE, RECEPCIONISTA, VETERINARIO]
     VerifyEmailRequest:
       type: object
-      required: [email, code]
+      required: [correo, codigo]
       properties:
-        email:
+        correo:
           type: string
           format: email
-        code:
+          example: isabela@gmail.com
+        codigo:
           type: string
+          minLength: 6
+          maxLength: 6
+          example: "123456"
     LoginRequest:
       type: object
-      required: [email, password]
+      required: [correo, contrasena]
       properties:
-        email:
+        correo:
           type: string
           format: email
-        password:
+          example: isabela@gmail.com
+        contrasena:
           type: string
+          example: Segura123
     LoginResponse:
       type: object
       properties:
         accessToken:
           type: string
-        refreshToken:
+        codigo:
           type: string
+        nombre:
+          type: string
+        apellido:
+          type: string
+        correo:
+          type: string
+          format: email
+        rol:
+          type: string
+          enum: [ADMIN, CLIENTE, RECEPCIONISTA, VETERINARIO]
 
     # --- Users ---
     UserResponse:
       type: object
       properties:
-        id:
+        codigo:
           type: string
-          format: uuid
-        email:
+        nombre:
+          type: string
+        apellido:
+          type: string
+        correo:
           type: string
           format: email
-        firstName:
+        telefono:
           type: string
-        lastName:
+        rol:
           type: string
-        phone:
-          type: string
-        role:
-          type: string
-          enum: [cliente, recepcionista, veterinario, administrador]
-        status:
+          enum: [ADMIN, CLIENTE, RECEPCIONISTA, VETERINARIO]
+        estado:
           type: string
           enum: [pendiente_verificacion, pendiente_aprobacion, activo, suspendido, rechazado]
-        createdAt:
+        creadoEn:
           type: string
-          format: date-time
     UpdateProfileRequest:
       type: object
       properties:

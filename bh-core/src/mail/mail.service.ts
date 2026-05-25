@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 
@@ -8,9 +8,18 @@ import * as nodemailer from 'nodemailer';
  */
 @Injectable()
 export class MailService {
-  private transporter: nodemailer.Transporter;
+  private readonly logger = new Logger(MailService.name);
+  private readonly driver: string;
+  private readonly transporter?: nodemailer.Transporter;
 
   constructor(private readonly configService: ConfigService) {
+    this.driver = (this.configService.get<string>('MAIL_DRIVER') ?? 'gmail').toLowerCase();
+
+    if (this.driver === 'console') {
+      this.logger.log('MAIL_DRIVER=console activo; los codigos se imprimen en consola.');
+      return;
+    }
+
     this.transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
@@ -30,6 +39,15 @@ export class MailService {
    * @param codigo - Codigo de verificacion de 6 digitos
    */
   async sendVerificationCode(correo: string, codigo: string): Promise<void> {
+    if (this.driver === 'console') {
+      this.logger.log(`[DEV EMAIL] Codigo de verificacion para ${correo}: ${codigo}`);
+      return;
+    }
+
+    if (!this.transporter) {
+      throw new Error('Transportador de correo no configurado');
+    }
+
     await this.transporter.sendMail({
       from: `"Breaze & Harold" <${this.configService.get<string>('MAIL_FROM')}>`,
       to: correo,
@@ -103,6 +121,17 @@ export class MailService {
       total: number;
     },
   ): Promise<void> {
+    if (this.driver === 'console') {
+      this.logger.log(
+        `[DEV EMAIL] Confirmacion de cita para ${correo}: ${datos.nombreCliente} - ${datos.fecha} ${datos.hora}`,
+      );
+      return;
+    }
+
+    if (!this.transporter) {
+      throw new Error('Transportador de correo no configurado');
+    }
+
     const serviciosHtml = datos.servicios
       .map(
         (s) => `

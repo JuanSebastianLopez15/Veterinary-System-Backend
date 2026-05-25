@@ -35,4 +35,4 @@ COPY --from=builder /usr/src/app/database.json ./database.json
 EXPOSE 3000
 
 # Ejecutar migraciones SQL y luego arrancar la app
-CMD ["sh", "-c", "npx node-pg-migrate up --migrations-dir resources/database && node dist/main"]
+CMD ["sh", "-c", "npx node-pg-migrate up --migrations-dir resources/database && node dist/src/main"]

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import type ms from 'ms';
 
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -10,7 +11,7 @@ import { AuditModule } from '../audit/audit.module';
 import { MailModule } from '../mail/mail.module';
 
 import { JwtStrategy } from './strategies/jwt.strategy';
-console.log('JWT_SECRET:', process.env.JWT_SECRET);
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -20,10 +21,20 @@ console.log('JWT_SECRET:', process.env.JWT_SECRET);
     AuditModule,
     MailModule,
 
-    JwtModule.register({
-      secret: process.env.JWT_SECRET!,
-      signOptions: {
-        expiresIn: 8 * 60 * 60,
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => {
+        const expiresIn = (
+          configService.get<string>('JWT_EXPIRES_IN') ?? '8h'
+        ) as ms.StringValue;
+
+        return {
+          secret: configService.get<string>('JWT_SECRET', 'super_secret_key_123'),
+          signOptions: {
+            expiresIn,
+          },
+        };
       },
     }),
   ],

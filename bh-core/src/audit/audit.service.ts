@@ -17,14 +17,19 @@ interface AuditEventPayload {
 export class AuditService {
   private readonly logger = new Logger(AuditService.name);
   private readonly auditUrl: string;
+  private readonly enabled: boolean;
 
   constructor(private readonly configService: ConfigService) {
+    this.enabled =
+      this.configService.get<string>('AUDIT_ENABLED', 'true').toLowerCase() !== 'false';
     this.auditUrl =
       this.configService.get<string>('AUDIT_URL') ??
       'http://localhost:3001/api/v1/audit/events';
   }
 
   async emit(payload: AuditEventPayload): Promise<void> {
+    if (!this.enabled) return;
+
     try {
       const auditPayload = {
         ...payload,
