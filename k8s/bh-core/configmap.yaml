@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bh-core-config
+data:
+  PORT: "3000"
+  DB_HOST: "bh-core-db-service"
+  DB_PORT: "5432"
+  DB_NAME: "bh_core_db"
+  DB_USER: "postgres"
+  DATABASE_URL: "postgresql://postgres:postgres_password@bh-core-db-service:5432/bh_core_db?schema=public"
+  AUDIT_URL: "http://bh-audit-service:3001/api/v1/audit/events"
+  JWT_EXPIRES_IN: "24h"
