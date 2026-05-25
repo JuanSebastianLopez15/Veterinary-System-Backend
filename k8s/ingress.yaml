@@ -1,0 +1,20 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: bh-ingress
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: api.bhveterinary.com
+      http:
+        paths:
+          # Todo el tráfico externo va hacia bh-core
+          # bh-audit no está expuesto aquí por seguridad
+          #  y solo es accesible internamente por bh-core ademas 
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: bh-core-service
+                port:
+                  number: 3000
