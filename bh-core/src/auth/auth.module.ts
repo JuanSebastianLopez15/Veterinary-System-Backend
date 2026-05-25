@@ -29,8 +29,13 @@ import { JwtStrategy } from './strategies/jwt.strategy';
           configService.get<string>('JWT_EXPIRES_IN') ?? '8h'
         ) as ms.StringValue;
 
+        const secret = configService.get<string>('JWT_SECRET');
+        if (!secret) {
+          throw new Error('JWT_SECRET environment variable is not set');
+        }
+
         return {
-          secret: configService.get<string>('JWT_SECRET', 'super_secret_key_123'),
+          secret,
           signOptions: {
             expiresIn,
           },

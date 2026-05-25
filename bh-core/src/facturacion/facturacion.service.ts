@@ -3,12 +3,17 @@ import { CrearFacturaDto } from './dto/crear-factura.dto';
 import { AnularFacturaDto } from './dto/anular-factura.dto';
 import { PdfGeneratorHelper } from '../reportesPDF/helpers/pdf-generator.helper';
 import { REPORTES_COLORS } from '../reportesPDF/reportes-pdf.constants';
+import { AuditService } from '../audit/audit.service';
+import { AuditAction } from '../audit/enums/audit-action.enum';
 
 @Injectable()
 export class FacturacionService {
-  constructor(@Inject('DATABASE_POOL') private readonly db: any) {}
+  constructor(
+    @Inject('DATABASE_POOL') private readonly db: any,
+    private readonly auditService: AuditService,
+  ) {}
 
-  async generarFactura(crearFacturaDto: CrearFacturaDto) {
+  async generarFactura(crearFacturaDto: CrearFacturaDto, actorId?: string, actorRole?: string) {
     const { citaId, descuento = 0, medicamentosAdicionales = [] } = crearFacturaDto;
 
     if (descuento < 0) {
@@ -112,7 +117,18 @@ export class FacturacionService {
       }
 
       await client.query('COMMIT');
-      return nuevaFactura.rows[0];
+      const factura = nuevaFactura.rows[0];
+
+      this.auditService.emit({
+        action: AuditAction.CREACION_FACTURA,
+        userId: actorId ?? 'system',
+        userRole: actorRole ?? 'recepcionista',
+        entityType: 'Invoice',
+        entityId: factura.codigo,
+        details: { citaId, total: factura.total, descuento, saldoPendiente: factura.saldo_pendiente },
+      }).catch(() => {});
+
+      return factura;
 
     } catch (error) {
       await client.query('ROLLBACK');
@@ -122,7 +138,7 @@ export class FacturacionService {
     }
   }
 
-  async anularFactura(id: string, anularFacturaDto: AnularFacturaDto) {
+  async anularFactura(id: string, anularFacturaDto: AnularFacturaDto, actorId?: string, actorRole?: string) {
     const factura = await this.db.query(
       'SELECT * FROM factura WHERE codigo = $1',
       [id]
@@ -143,7 +159,18 @@ export class FacturacionService {
       [anularFacturaDto.motivoAnulacion, id]
     );
 
-    return facturaActualizada.rows[0];
+    const anulada = facturaActualizada.rows[0];
+
+    this.auditService.emit({
+      action: AuditAction.ANULACION_FACTURA,
+      userId: actorId ?? 'system',
+      userRole: actorRole ?? 'recepcionista',
+      entityType: 'Invoice',
+      entityId: id,
+      details: { motivo: anularFacturaDto.motivoAnulacion },
+    }).catch(() => {});
+
+    return anulada;
   }
 
   async marcarComoPagada(id: string) {
