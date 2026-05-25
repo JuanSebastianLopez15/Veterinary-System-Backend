@@ -10,11 +10,30 @@ export class MascotasService {
               private readonly auditService: AuditService,
   ) {}
 
+  /**
+   * Registra una nueva mascota y la asocia a un cliente existente.
+   * @param body - Datos de la mascota: clienteCodigo, nombre, especie, raza, color, fechaNacimiento, peso
+   */
   async registrarMascota(body: any) {
     const { clienteCodigo, nombre, especie, raza, color, fechaNacimiento, peso } = body;
 
     if (!clienteCodigo || !nombre || !especie || !raza || !color || !fechaNacimiento || !peso) {
       throw new BadRequestException('Todos los campos son obligatorios');
+    }
+
+    if (!nombre.trim()) {
+      throw new BadRequestException('El nombre no puede estar vacío');
+    }
+
+    if (peso <= 0) {
+      throw new BadRequestException('El peso debe ser mayor a 0');
+    }
+
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    const nacimiento = new Date(fechaNacimiento);
+    if (nacimiento > hoy) {
+      throw new BadRequestException('La fecha de nacimiento no puede ser futura');
     }
 
     const { rows: [cliente] } = await this.pool.query(
@@ -51,6 +70,10 @@ export class MascotasService {
     return mascota;
   }
 
+  /**
+   * Devuelve los datos de una mascota por su ID.
+   * @param id - Código único de la mascota
+   */
   async consultarMascotaPorId(id: string) {
     const { rows: [mascota] } = await this.pool.query(
       `SELECT codigo, cliente_codigo, nombre, especie, raza, color, fecha_nacimiento, peso, estado
@@ -66,8 +89,18 @@ export class MascotasService {
     return mascota;
   }
 
+  /**
+   * Actualiza los datos de una mascota.
+   * Solo se modifican los campos que vienen en el body.
+   * @param id - Código único de la mascota
+   * @param body - Campos a actualizar (todos opcionales)
+   */
   async actualizarMascota(id: string, body: any) {
     const { nombre, especie, raza, color, fechaNacimiento, peso } = body;
+
+    if (peso !== undefined && peso !== null && peso <= 0) {
+      throw new BadRequestException('El peso debe ser mayor a 0');
+    }
 
     const { rows: [mascota] } = await this.pool.query(
       `SELECT codigo FROM mascotas WHERE codigo = $1`,
@@ -109,11 +142,20 @@ export class MascotasService {
     return { mensaje: 'Mascota actualizada exitosamente' };
   }
 
+  /**
+   * Actualiza el peso actual de una mascota.
+   * @param id - Código único de la mascota
+   * @param body - Objeto con el nuevo peso: { peso }
+   */
   async registrarPeso(id: string, body: any) {
     const { peso } = body;
 
     if (!peso) {
       throw new BadRequestException('El peso es obligatorio');
+    }
+
+    if (peso <= 0) {
+      throw new BadRequestException('El peso debe ser mayor a 0');
     }
 
     const { rows: [mascota] } = await this.pool.query(
@@ -142,6 +184,11 @@ export class MascotasService {
     return { mensaje: 'Peso registrado exitosamente' };
   }
 
+  /**
+   * Cambia el estado de una mascota a 'hospitalizada'.
+   * Solo se puede hacer si la mascota está activa.
+   * @param id - Código único de la mascota
+   */
   async hospitalizarMascota(id: string) {
     const { rows: [mascota] } = await this.pool.query(
       `SELECT codigo, estado FROM mascotas WHERE codigo = $1`,
@@ -173,6 +220,11 @@ export class MascotasService {
     return { mensaje: 'Mascota hospitalizada exitosamente' };
   }
 
+  /**
+   * Marca una mascota como fallecida.
+   * No se puede aplicar si la mascota ya estaba registrada como fallecida.
+   * @param id - Código único de la mascota
+   */
   async registrarFallecimiento(id: string) {
     const { rows: [mascota] } = await this.pool.query(
       `SELECT codigo, estado FROM mascotas WHERE codigo = $1`,

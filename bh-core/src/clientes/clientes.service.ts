@@ -6,11 +6,30 @@ export class ClientesService {
   constructor(private readonly prisma: PrismaService,
               private readonly auditService: AuditService,) {}
 
+  /**
+   * Registra un nuevo cliente en el sistema.
+   * Crea el usuario base y el perfil de cliente en una sola transacción.
+   * @param body - Datos del cliente: nombre, apellido, correo, contrasena, telefono, direccion, ciudad
+   */
   async registrarCliente(body: any) {
     const { nombre, apellido, correo, contrasena, telefono, direccion, ciudad } = body;
 
     if (!nombre || !apellido || !correo || !contrasena || !telefono || !direccion || !ciudad) {
       throw new BadRequestException('Todos los campos son obligatorios');
+    }
+
+    if (!nombre.trim() || !apellido.trim()) {
+      throw new BadRequestException('El nombre y apellido no pueden estar vacíos');
+    }
+
+    const correoRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!correoRegex.test(correo)) {
+      throw new BadRequestException('El correo no tiene un formato válido');
+    }
+
+    const telefonoRegex = /^\d{7,15}$/;
+    if (!telefonoRegex.test(telefono)) {
+      throw new BadRequestException('El teléfono debe tener entre 7 y 15 dígitos numéricos');
     }
 
     return await this.prisma.$transaction(async (tx) => {
@@ -71,6 +90,10 @@ export class ClientesService {
     });
   }
 
+  /**
+   * Devuelve la lista de todos los clientes registrados.
+   * Los resultados vienen ordenados por nombre de forma alfabética.
+   */
   async consultarClientes() {
     const clientes = await this.prisma.cliente.findMany({
       include: {
@@ -91,6 +114,11 @@ export class ClientesService {
     }));
   }
 
+  /**
+   * Busca clientes cuyo nombre contenga el texto recibido.
+   * La búsqueda no distingue entre mayúsculas y minúsculas.
+   * @param nombre - Texto a buscar en el nombre del cliente
+   */
   async consultarClientesPorNombre(nombre: string) {
     if (!nombre) {
       throw new BadRequestException('El nombre es obligatorio');
@@ -120,6 +148,10 @@ export class ClientesService {
     }));
   }
 
+  /**
+   * Devuelve los datos completos de un cliente, incluyendo sus mascotas.
+   * @param id - Código único del cliente
+   */
   async consultarClientePorId(id: string) {
     const cliente = await this.prisma.cliente.findUnique({
       where: { codigo: id },
@@ -158,6 +190,12 @@ export class ClientesService {
     };
   }
 
+  /**
+   * Actualiza los datos de un cliente existente.
+   * Solo se actualizan los campos que vienen en el body, los demás se quedan igual.
+   * @param id - Código único del cliente
+   * @param body - Campos a actualizar (todos opcionales)
+   */
   async actualizarCliente(id: string, body: any) {
     const { nombre, apellido, correo, telefono, direccion, ciudad } = body;
 
