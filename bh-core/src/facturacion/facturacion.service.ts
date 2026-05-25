@@ -15,89 +15,131 @@ export class FacturacionService {
       throw new BadRequestException('El valor del descuento no puede ser un número negativo.');
     }
 
-    //Validar la cita y obtener el cliente_codigo asociado a ella
+    //Validar cita
     const citaQuery = await this.db.query(
-      `SELECT c.*, m.usuario_codigo AS cliente_codigo 
-       FROM cita c
-       JOIN mascota m ON c.mascota_codigo = m.codigo
-       WHERE c.codigo = $1`, 
+      `SELECT codigo, cliente_codigo FROM cita WHERE codigo = $1`,
       [citaId]
     );
-    
     if (!citaQuery || citaQuery.rows.length === 0) {
       throw new NotFoundException('La cita médica especificada no existe.');
     }
-    const cita = citaQuery.rows[0];
-    const clienteCodigo = cita.cliente_codigo;
+    const clienteCodigo = citaQuery.rows[0].cliente_codigo;
 
-    //Buscar pago previo 
+    //Verificar factura existente
+    const facturaExistente = await this.db.query(
+      'SELECT codigo FROM factura WHERE cita_codigo = $1',
+      [citaId]
+    );
+    if (facturaExistente.rows.length > 0) {
+      throw new BadRequestException('Ya existe una factura generada para esta cita.');
+    }
+
+    //Obtener prepago
     const pagoPrevio = await this.db.query(
       'SELECT monto FROM pago WHERE cita_codigo = $1 LIMIT 1',
       [citaId]
     );
-    const montoPrepagado = pagoPrevio.rows.length > 0 ? Math.max(0, Number(pagoPrevio.rows[0].monto || 0)) : 0;
+    const montoPrepagado = pagoPrevio.rows.length > 0
+      ? Math.max(0, Number(pagoPrevio.rows[0].monto || 0))
+      : 0;
 
-    //Calcular costos de servicios
+    //Calcular servicios
     const serviciosCita = await this.db.query(
       `SELECT s.precio FROM cita_servicios cs 
        JOIN servicio s ON cs.servicio_codigo = s.codigo 
        WHERE cs.cita_codigo = $1`,
       [citaId]
     );
-    const totalServicios = serviciosCita.rows.reduce((sum: number, s: any) => sum + Math.max(0, Number(s.precio || 0)), 0);
-
-    //Calcular costos de medicamentos adicionales
-    let totalMedicamentos = 0;
-    for (const med of medicamentosAdicionales) {
-      if (med.cantidad <= 0 || med.precioUnitario < 0) {
-        throw new BadRequestException('Cantidades o precios de medicamentos inválidos.');
-      }
-      totalMedicamentos += (med.cantidad * med.precioUnitario);
-    }
-
-    const subtotalCalculado = totalServicios + totalMedicamentos;
-
-    if (descuento > subtotalCalculado) {
-      throw new BadRequestException(`El descuento ($${descuento}) no puede ser mayor que el subtotal ($${subtotalCalculado}).`);
-    }
-
-    const totalConDescuento = subtotalCalculado - descuento;
-    const totalFinal = Math.max(0, totalConDescuento - montoPrepagado);
-    const saldoPendiente = totalFinal;
-
-    // Inserción SQL adaptada
-    const nuevaFactura = await this.db.query(
-      `INSERT INTO factura (cita_codigo, cliente_codigo, total, descuento, prepagado, saldo_pendiente)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [citaId, clienteCodigo, totalFinal, descuento, montoPrepagado, saldoPendiente]
+    const totalServicios = serviciosCita.rows.reduce(
+      (sum: number, s: any) => sum + Math.max(0, Number(s.precio || 0)),
+      0
     );
 
-    //Insertar medicamentos
+    // obtener precio base
+    let totalMedicamentos = 0;
     for (const med of medicamentosAdicionales) {
-      await this.db.query(
-        `INSERT INTO detalle_factura_medicamento (factura_codigo, producto_codigo, cantidad, precio_unitario)
-         VALUES ($1, $2, $3, $4)`,
-        [nuevaFactura.rows[0].codigo, med.productoId, med.cantidad, med.precioUnitario]
+      if (med.cantidad <= 0) {
+        throw new BadRequestException('La cantidad de medicamentos debe ser mayor a cero.');
+      }
+      const prodBase = await this.db.query(
+        'SELECT precio FROM producto WHERE codigo = $1',
+        [med.productoId]
       );
+      if (!prodBase || prodBase.rows.length === 0) {
+        throw new NotFoundException(`El producto con id ${med.productoId} no existe.`);
+      }
+      totalMedicamentos += Number(prodBase.rows[0].precio) * med.cantidad;
     }
 
-    return nuevaFactura.rows[0];
+    //Calcular totales de la factura
+    const subtotalCalculado = totalServicios + totalMedicamentos;
+    if (descuento > subtotalCalculado) {
+      throw new BadRequestException(`El descuento ($${descuento}) no puede superar al subtotal.`);
+    }
+    const totalConDescuento = subtotalCalculado - descuento;
+    const saldoPendiente = Math.max(0, totalConDescuento - montoPrepagado);
+
+    const client = await this.db.connect();
+    try {
+      await client.query('BEGIN');
+
+      //Insertar la factura
+      const nuevaFactura = await client.query(
+        `INSERT INTO factura (cita_codigo, cliente_codigo, total, descuento, prepagado, saldo_pendiente)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [citaId, clienteCodigo, totalConDescuento, descuento, montoPrepagado, saldoPendiente]
+      );
+
+      for (const med of medicamentosAdicionales) {
+    
+        const productoLock = await client.query(
+          'SELECT stock FROM producto WHERE codigo = $1 FOR UPDATE',
+          [med.productoId]
+        );
+        
+        const stockActual = productoLock.rows[0]?.stock ?? 0;
+
+        if (stockActual < med.cantidad) {
+          throw new BadRequestException(
+            `Stock insuficiente en el momento exacto de facturar para el producto ${med.productoId}. Disponible: ${stockActual}.`
+          );
+        }
+
+        await client.query(
+          `UPDATE producto SET stock = stock - $1 WHERE codigo = $2`,
+          [med.cantidad, med.productoId]
+        );
+      }
+
+      await client.query('COMMIT');
+      return nuevaFactura.rows[0];
+
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async anularFactura(id: string, anularFacturaDto: AnularFacturaDto) {
-    // Verificar existencia de la factura
     const factura = await this.db.query(
       'SELECT * FROM factura WHERE codigo = $1',
       [id]
     );
 
-    if (!factura || factura.rows.length === 0) throw new NotFoundException('La factura no existe.');
-    if (factura.rows[0].estado === 'anulada') throw new BadRequestException('La factura ya se encuentra anulada.');
+    if (!factura || factura.rows.length === 0) {
+      throw new NotFoundException('La factura no existe.');
+    }
+    if (factura.rows[0].estado === 'anulada') {
+      throw new BadRequestException('La factura ya se encuentra anulada.');
+    }
 
     const facturaActualizada = await this.db.query(
-      `UPDATE factura 
-       SET estado = 'anulada', motivo_allowed = $1 
-       WHERE codigo = $2 RETURNING *`,
+      `UPDATE factura
+       SET estado = 'anulada', motivo_anulado = $1
+       WHERE codigo = $2
+       RETURNING *`,
       [anularFacturaDto.motivoAnulacion, id]
     );
 
@@ -105,7 +147,6 @@ export class FacturacionService {
   }
 
   async marcarComoPagada(id: string) {
-    // Buscar la factura actual para validar su estado previo
     const factura = await this.db.query(
       'SELECT * FROM factura WHERE codigo = $1',
       [id]
@@ -127,11 +168,11 @@ export class FacturacionService {
       throw new BadRequestException('Solo las facturas en estado pendiente pueden marcarse como pagadas.');
     }
 
-    // Actualizar el estado
     const facturaPagada = await this.db.query(
-      `UPDATE factura 
-       SET estado = 'pagada', saldo_pendiente = 0 
-       WHERE codigo = $1 RETURNING *`,
+      `UPDATE factura
+       SET estado = 'pagada', saldo_pendiente = 0
+       WHERE codigo = $1
+       RETURNING *`,
       [id]
     );
 
@@ -150,7 +191,7 @@ export class FacturacionService {
       }
     }
 
-    query += ' ORDER BY codigo DESC';
+    query += ' ORDER BY fecha DESC';
 
     const resultado = await this.db.query(query, params);
     return resultado.rows;
@@ -163,7 +204,7 @@ export class FacturacionService {
        JOIN cliente cl ON f.cliente_codigo = cl.codigo
        JOIN usuario u ON cl.usuario_codigo = u.codigo
        JOIN cita c ON f.cita_codigo = c.codigo
-       JOIN mascotas m ON c.mascota_codigo = m.codigo
+       JOIN mascotas ms ON c.mascota_codigo = ms.codigo
        WHERE f.codigo = $1`,
       [facturaId]
     );
@@ -174,7 +215,6 @@ export class FacturacionService {
 
     const factura = facturaQuery.rows[0];
 
-    // Validación de seguridad
     if (factura.cliente_codigo !== clienteId) {
       throw new BadRequestException('Acceso denegado. Esta factura pertenece a otro cliente.');
     }
