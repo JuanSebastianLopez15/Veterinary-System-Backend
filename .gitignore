@@ -27,6 +27,7 @@ Thumbs.db
 # IDE
 .idea/
 .vscode/
+
 *.suo
 *.ntvs*
 *.njsproj

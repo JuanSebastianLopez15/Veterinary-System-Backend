@@ -1,0 +1,24 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model AuditEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  action     String
+  userId     String?  @db.Uuid
+  userRole   String?
+  entityType String
+  entityId   String?  @db.Uuid
+  details    Json
+  ipAddress  String
+  timestamp  DateTime @default(now())
+
+  @@index([action])
+  @@index([userId])
+  @@index([timestamp])
+}

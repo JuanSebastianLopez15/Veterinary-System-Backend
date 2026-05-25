@@ -22,74 +22,101 @@ components:
     # --- Auth ---
     RegisterRequest:
       type: object
-      required: [email, password, firstName, lastName, phone, role]
+      required: [nombre, apellido, correo, contrasena, telefono, rol]
       properties:
-        email:
+        nombre:
+          type: string
+          minLength: 3
+          maxLength: 50
+          example: Isabela
+        apellido:
+          type: string
+          minLength: 3
+          maxLength: 50
+          example: Quintero
+        correo:
           type: string
           format: email
-        password:
+          maxLength: 70
+          example: isabela@gmail.com
+        contrasena:
           type: string
           minLength: 8
-        firstName:
+          maxLength: 50
+          example: Segura123
+        telefono:
           type: string
-        lastName:
+          minLength: 10
+          maxLength: 10
+          example: "3001234567"
+        rol:
           type: string
-        phone:
-          type: string
-        role:
-          type: string
-          enum: [cliente, recepcionista, veterinario]
+          enum: [CLIENTE, RECEPCIONISTA, VETERINARIO]
     VerifyEmailRequest:
       type: object
-      required: [email, code]
+      required: [correo, codigo]
       properties:
-        email:
+        correo:
           type: string
           format: email
-        code:
+          example: isabela@gmail.com
+        codigo:
           type: string
+          minLength: 6
+          maxLength: 6
+          example: "123456"
     LoginRequest:
       type: object
-      required: [email, password]
+      required: [correo, contrasena]
       properties:
-        email:
+        correo:
           type: string
           format: email
-        password:
+          example: isabela@gmail.com
+        contrasena:
           type: string
+          example: Segura123
     LoginResponse:
       type: object
       properties:
         accessToken:
           type: string
-        refreshToken:
+        codigo:
           type: string
+        nombre:
+          type: string
+        apellido:
+          type: string
+        correo:
+          type: string
+          format: email
+        rol:
+          type: string
+          enum: [ADMIN, CLIENTE, RECEPCIONISTA, VETERINARIO]
 
     # --- Users ---
     UserResponse:
       type: object
       properties:
-        id:
+        codigo:
           type: string
-          format: uuid
-        email:
+        nombre:
+          type: string
+        apellido:
+          type: string
+        correo:
           type: string
           format: email
-        firstName:
+        telefono:
           type: string
-        lastName:
+        rol:
           type: string
-        phone:
-          type: string
-        role:
-          type: string
-          enum: [cliente, recepcionista, veterinario, administrador]
-        status:
+          enum: [ADMIN, CLIENTE, RECEPCIONISTA, VETERINARIO]
+        estado:
           type: string
           enum: [pendiente_verificacion, pendiente_aprobacion, activo, suspendido, rechazado]
-        createdAt:
+        creadoEn:
           type: string
-          format: date-time
     UpdateProfileRequest:
       type: object
       properties:
@@ -252,66 +279,198 @@ components:
     # --- Citas ---
     CreateAppointmentRequest:
       type: object
-      required: [petId, veterinarianId, scheduledAt, serviceIds, paymentMethod]
+      required: [usuarioCodigo, mascotaCodigo, clienteCodigo, fecha, hora, serviciosCodigos, metodoPago]
       properties:
-        petId:
+        usuarioCodigo:
           type: string
           format: uuid
-        veterinarianId:
+          description: Codigo del veterinario asignado. Solo recepcionista puede enviarlo en POST /appointments.
+        mascotaCodigo:
           type: string
           format: uuid
-        scheduledAt:
+        clienteCodigo:
           type: string
-          format: date-time
-        serviceIds:
+          format: uuid
+        fecha:
+          type: string
+          format: date
+          example: '2024-06-10'
+        hora:
+          type: string
+          example: '09:00'
+        serviciosCodigos:
           type: array
+          minItems: 1
           items:
             type: string
             format: uuid
-        paymentMethod:
+        metodoPago:
           type: string
-          enum: [efectivo, tarjeta, transferencia]
-    AppointmentResponse:
+          enum: [efectivo, tarjeta, transferencia, otro]
+    CreateClientAppointmentRequest:
+      type: object
+      required: [usuarioCodigo, mascotaCodigo, fecha, hora, serviciosCodigos, metodoPago]
+      properties:
+        usuarioCodigo:
+          type: string
+          format: uuid
+          description: Codigo del veterinario solicitado.
+        mascotaCodigo:
+          type: string
+          format: uuid
+        fecha:
+          type: string
+          format: date
+          example: '2024-06-10'
+        hora:
+          type: string
+          example: '09:00'
+        serviciosCodigos:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            format: uuid
+        metodoPago:
+          type: string
+          enum: [efectivo, tarjeta, transferencia, otro]
+    AppointmentServiceItem:
       type: object
       properties:
-        id:
+        codigo:
           type: string
           format: uuid
-        petId:
+        nombre:
           type: string
-          format: uuid
-        veterinarianId:
-          type: string
-          format: uuid
-        clientId:
-          type: string
-          format: uuid
-        scheduledAt:
-          type: string
-          format: date-time
-        status:
-          type: string
-          enum: [confirmada, en_atencion, finalizada, cancelada]
-        cancellationReason:
-          type: string
-        totalAmount:
+        precioUnitario:
           type: number
-        paymentId:
+    AppointmentPaymentResponse:
+      type: object
+      properties:
+        codigo:
           type: string
           format: uuid
-        createdAt:
+        monto:
+          type: number
+        metodoPago:
           type: string
-          format: date-time
-        services:
+          enum: [efectivo, tarjeta, transferencia, otro]
+        estado:
+          type: string
+          enum: [aprobado]
+          description: Pago mock aprobado registrado al crear la cita.
+        fecha:
+          type: string
+          format: date
+    CreatedAppointmentResponse:
+      type: object
+      properties:
+        codigo:
+          type: string
+          format: uuid
+        total:
+          type: number
+        estado:
+          type: string
+          enum: [confirmada]
+        servicios:
           type: array
           items:
-            $ref: '#/components/schemas/ServiceResponse'
+            $ref: '#/components/schemas/AppointmentServiceItem'
+        pago:
+          $ref: '#/components/schemas/AppointmentPaymentResponse'
+    DailyAgendaAppointmentResponse:
+      type: object
+      properties:
+        cita:
+          type: object
+          properties:
+            codigo:
+              type: string
+              format: uuid
+            fecha:
+              type: string
+              format: date
+            hora:
+              type: string
+              example: '09:00:00'
+        estado:
+          type: string
+          enum: [pendiente, confirmada, completada, cancelada]
+        total:
+          type: number
+        mascota:
+          type: object
+          properties:
+            codigo:
+              type: string
+              format: uuid
+            nombre:
+              type: string
+            especie:
+              type: string
+            raza:
+              type: string
+        cliente:
+          type: object
+          properties:
+            codigo:
+              type: string
+              format: uuid
+            usuarioCodigo:
+              type: string
+              format: uuid
+            nombre:
+              type: string
+            apellido:
+              type: string
+            correo:
+              type: string
+              format: email
+            ciudad:
+              type: string
+        servicios:
+          type: array
+          items:
+            $ref: '#/components/schemas/AppointmentServiceItem'
+    AppointmentStateResponse:
+      type: object
+      properties:
+        codigo:
+          type: string
+          format: uuid
+        usuarioCodigo:
+          type: string
+          format: uuid
+        mascotaCodigo:
+          type: string
+          format: uuid
+        clienteCodigo:
+          type: string
+          format: uuid
+        fecha:
+          type: string
+          format: date
+        hora:
+          type: string
+          example: '09:00:00'
+        estado:
+          type: string
+          enum: [pendiente, confirmada, completada, cancelada]
+        total:
+          type: number
+        motivoCancelacion:
+          type: string
+          nullable: true
+    AppointmentResponse:
+      $ref: '#/components/schemas/AppointmentStateResponse'
     CancelAppointmentRequest:
       type: object
-      required: [reason]
+      required: [motivo]
       properties:
-        reason:
+        motivo:
           type: string
+          minLength: 1
 
     # --- Historiales Clinicos ---
     CreateMedicalRecordRequest:
@@ -559,6 +718,10 @@ components:
         category:
           type: string
           enum: [medicamento, vacuna, insumo_quirurgico]
+        type:
+          type: string
+          description: Alias semántico de `category` para el contrato SCRUM-98
+          enum: [medicamento, vacuna, insumo_quirurgico]
         stock:
           type: integer
         minStock:
@@ -568,9 +731,39 @@ components:
         expirationDate:
           type: string
           format: date
+          nullable: true
         createdAt:
           type: string
           format: date-time
+    InventoryProductWithAlerts:
+      allOf:
+        - $ref: '#/components/schemas/InventoryProductResponse'
+        - type: object
+          properties:
+            isLowStock:
+              type: boolean
+              description: True cuando `stock <= minStock`
+            isExpiringSoon:
+              type: boolean
+              description: True cuando `expirationDate` está en los próximos 30 días
+    InventoryAlertsResponse:
+      type: object
+      properties:
+        lowStock:
+          type: array
+          items:
+            $ref: '#/components/schemas/InventoryProductWithAlerts'
+        expiringSoon:
+          type: array
+          items:
+            $ref: '#/components/schemas/InventoryProductWithAlerts'
+    UpdateServicePriceRequest:
+      type: object
+      required: [price]
+      properties:
+        price:
+          type: number
+          minimum: 0
 
     # --- Invoices ---
     CreateInvoiceRequest:
@@ -1275,7 +1468,10 @@ paths:
   /appointments:
     post:
       tags: [Appointments]
-      summary: Agendar cita
+      summary: Agendar cita por recepcionista
+      description: Requiere JWT con rol RECEPCIONISTA. La cita queda confirmada solo si el pago mock aprobado se registra en la misma transaccion.
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -1284,82 +1480,135 @@ paths:
               $ref: '#/components/schemas/CreateAppointmentRequest'
       responses:
         '201':
-          description: Cita agendada (requiere pago)
+          description: Cita confirmada con pago aprobado registrado
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AppointmentResponse'
+                $ref: '#/components/schemas/CreatedAppointmentResponse'
+        '400':
+          description: Solicitud invalida, pago faltante/invalido, veterinario invalido o servicio inactivo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Token ausente o invalido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Rol no autorizado o mascota no pertenece al cliente indicado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '409':
-          description: Cruce de horarios
+          description: Veterinario ocupado en la fecha y hora solicitadas
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-        '422':
-          description: Pago no proporcionado
+  /appointments/client:
+    post:
+      tags: [Appointments]
+      summary: Agendar cita para la mascota del cliente autenticado
+      description: Requiere JWT con rol CLIENTE. El cliente no envia clienteCodigo; se deriva desde el token y la mascota debe pertenecerle.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateClientAppointmentRequest'
+      responses:
+        '201':
+          description: Cita confirmada con pago aprobado registrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedAppointmentResponse'
+        '400':
+          description: Solicitud invalida, pago faltante/invalido, veterinario invalido o servicio inactivo
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Token ausente o invalido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Rol no autorizado, cliente sin cuenta asociada o mascota ajena
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Veterinario ocupado en la fecha y hora solicitadas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /appointments/daily-agenda:
     get:
       tags: [Appointments]
-      summary: Listar citas
+      summary: Consultar agenda diaria
+      description: Requiere JWT con rol RECEPCIONISTA o VETERINARIO. El veterinario solo puede consultar su propia agenda.
+      security:
+        - bearerAuth: []
       parameters:
-        - name: mine
+        - name: veterinarioCodigo
           in: query
-          description: Si es true, retorna solo las citas del usuario autenticado
-          required: false
-          schema:
-            type: boolean
-      responses:
-        '200':
-          description: Lista de citas
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PaginatedAppointmentsResponse'
-  /appointments/{id}:
-    get:
-      tags: [Appointments]
-      summary: Detalle de cita
-      parameters:
-        - name: id
-          in: path
           required: true
           schema:
             type: string
             format: uuid
-      responses:
-        '200':
-          description: Cita encontrada
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AppointmentResponse'
-  /appointments/{id}/attend:
-    patch:
-      tags: [Appointments]
-      summary: Marcar cita en atención
-      parameters:
-        - name: id
-          in: path
+        - name: fecha
+          in: query
           required: true
           schema:
             type: string
-            format: uuid
+            format: date
       responses:
         '200':
-          description: Cita en atención
+          description: Agenda diaria del veterinario
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AppointmentResponse'
-  /appointments/{id}/complete:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DailyAgendaAppointmentResponse'
+        '400':
+          description: veterinarioCodigo y fecha son obligatorios o invalidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Token ausente o invalido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Rol no autorizado o veterinario consultando agenda ajena
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /appointments/{codigo}/complete:
     patch:
       tags: [Appointments]
       summary: Finalizar cita
+      description: Requiere JWT con rol VETERINARIO. Solo el veterinario asignado puede finalizar citas confirmadas y con pago registrado.
+      security:
+        - bearerAuth: []
       parameters:
-        - name: id
+        - name: codigo
           in: path
           required: true
           schema:
@@ -1371,13 +1620,46 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AppointmentResponse'
-  /appointments/{id}/cancel:
+                $ref: '#/components/schemas/AppointmentStateResponse'
+        '400':
+          description: Codigo invalido o faltante
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Token ausente o invalido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Rol no autorizado o veterinario no asignado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Cita no encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Cita cancelada, ya finalizada, no confirmada o sin pago registrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /appointments/{codigo}/cancel:
     patch:
       tags: [Appointments]
       summary: Cancelar cita
+      description: Requiere JWT con rol CLIENTE, RECEPCIONISTA o VETERINARIO. Cliente solo cancela citas propias y veterinario solo citas asignadas.
+      security:
+        - bearerAuth: []
       parameters:
-        - name: id
+        - name: codigo
           in: path
           required: true
           schema:
@@ -1395,7 +1677,37 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AppointmentResponse'
+                $ref: '#/components/schemas/AppointmentStateResponse'
+        '400':
+          description: Motivo obligatorio o codigo invalido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Token ausente o invalido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Rol no autorizado o usuario sin permiso sobre la cita
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Cita no encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Cita ya cancelada o finalizada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /appointments/{appointmentId}/medical-records:
     post:
@@ -2018,3 +2330,330 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+
+  # --- Inventario (SCRUM-98) ---
+  /inventory/products:
+    post:
+      tags: [Inventory]
+      summary: Crear producto de inventario
+      description: Solo administradores. Persiste el producto y emite el evento de auditoría correspondiente.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInventoryProductRequest'
+      responses:
+        '201':
+          description: Producto creado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryProductWithAlerts'
+        '400':
+          description: Datos inválidos (stock, minStock o price negativos)
+        '401':
+          description: Token inválido o no proporcionado
+        '403':
+          description: Acceso denegado (requiere rol ADMIN)
+    get:
+      tags: [Inventory]
+      summary: Listar productos con banderas de alerta
+      description: Devuelve cada producto enriquecido con `isLowStock` e `isExpiringSoon`.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista de productos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InventoryProductWithAlerts'
+        '401':
+          description: Token inválido o no proporcionado
+        '403':
+          description: Acceso denegado (requiere rol ADMIN)
+  /inventory/products/{id}:
+    get:
+      tags: [Inventory]
+      summary: Detalle de producto con banderas de alerta
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Producto encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryProductWithAlerts'
+        '401':
+          description: Token inválido o no proporcionado
+        '403':
+          description: Acceso denegado (requiere rol ADMIN)
+        '404':
+          description: Producto no encontrado
+    patch:
+      tags: [Inventory]
+      summary: Actualizar producto de inventario
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateInventoryProductRequest'
+      responses:
+        '200':
+          description: Producto actualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryProductWithAlerts'
+        '400':
+          description: Datos inválidos
+        '401':
+          description: Token inválido o no proporcionado
+        '403':
+          description: Acceso denegado (requiere rol ADMIN)
+        '404':
+          description: Producto no encontrado
+  /inventory/products/{id}/stock:
+    patch:
+      tags: [Inventory]
+      summary: Ajuste manual de stock
+      description: |
+        Aplica un ajuste de stock (positivo o negativo) en una única transacción que
+        actualiza el `stock` del producto y registra un `InventoryMovement` con tipo
+        `MANUAL_ADJUSTMENT`. Reglas:
+        - El stock resultante nunca puede ser negativo.
+        - La auditoría se emite de forma no bloqueante: si bh-audit falla, el ajuste
+          se conserva.
+        - Esta ruta NO debe usarse para descuentos de prescripción; esos descuentos
+          los hace el flujo SCRUM-44 con tipo `PRESCRIPTION_DEDUCTION`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdjustStockRequest'
+      responses:
+        '200':
+          description: Stock ajustado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryProductWithAlerts'
+        '400':
+          description: Ajuste inválido o stock resultante negativo
+        '401':
+          description: Token inválido o no proporcionado
+        '403':
+          description: Acceso denegado (requiere rol ADMIN)
+        '404':
+          description: Producto no encontrado
+  /inventory/low-stock:
+    get:
+      tags: [Inventory]
+      summary: Productos en bajo stock
+      description: |
+        Devuelve los productos donde `stock <= minStock`. Cada elemento incluye
+        `isLowStock: true`.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista de productos en bajo stock
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InventoryProductWithAlerts'
+        '401':
+          description: Token inválido o no proporcionado
+        '403':
+          description: Acceso denegado (requiere rol ADMIN)
+  /inventory/expiring:
+    get:
+      tags: [Inventory]
+      summary: Productos próximos a vencer
+      description: |
+        Devuelve los productos con `expirationDate` dentro de los próximos 30 días.
+        Cada elemento incluye `isExpiringSoon: true`.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista de productos próximos a vencer
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InventoryProductWithAlerts'
+        '401':
+          description: Token inválido o no proporcionado
+        '403':
+          description: Acceso denegado (requiere rol ADMIN)
+  /inventory/alerts:
+    get:
+      tags: [Inventory]
+      summary: Resumen de alertas de inventario
+      description: |
+        Devuelve un objeto con dos arreglos: `lowStock` (productos con
+        `stock <= minStock`) y `expiringSoon` (productos cuyo `expirationDate`
+        está dentro de los próximos 30 días).
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Resumen de alertas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryAlertsResponse'
+        '401':
+          description: Token inválido o no proporcionado
+        '403':
+          description: Acceso denegado (requiere rol ADMIN)
+
+  # --- Servicios (SCRUM-98) ---
+  /services/active:
+    get:
+      tags: [Services]
+      summary: Listar servicios activos
+      description: |
+        Devuelve únicamente los servicios cuyo `isActive` es `true`. Este es el
+        endpoint que el flujo de citas usa para presentar el catálogo seleccionable
+        al crear una cita: los servicios inactivos quedan excluidos.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista de servicios activos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ServiceResponse'
+        '401':
+          description: Token inválido o no proporcionado
+  /services/inactive:
+    get:
+      tags: [Services]
+      summary: Listar servicios inactivos (ADMIN)
+      description: Solo administradores. Los servicios inactivos permanecen visibles en registros históricos.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista de servicios inactivos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ServiceResponse'
+        '401':
+          description: Token inválido o no proporcionado
+        '403':
+          description: Acceso denegado (requiere rol ADMIN)
+  /services/{id}/price:
+    patch:
+      tags: [Services]
+      summary: Actualizar precio de un servicio
+      description: |
+        Solo administradores. Cambia exclusivamente el precio actual del servicio
+        en el catálogo. NO modifica los precios históricos: las citas y facturas ya
+        existentes conservan el `precio_unitario` con que fueron creadas. La acción
+        se audita con `previousPrice` y `newPrice`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateServicePriceRequest'
+      responses:
+        '200':
+          description: Precio actualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceResponse'
+        '400':
+          description: Precio inválido (debe ser >= 0)
+        '401':
+          description: Token inválido o no proporcionado
+        '403':
+          description: Acceso denegado (requiere rol ADMIN)
+        '404':
+          description: Servicio no encontrado
+  /services/{id}/activate:
+    patch:
+      tags: [Services]
+      summary: Reactivar un servicio
+      description: |
+        Solo administradores. Pone `isActive = true` para que el servicio vuelva a
+        aparecer en `/services/active` y pueda ser elegido en nuevas citas.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Servicio reactivado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceResponse'
+        '400':
+          description: El servicio ya está activo
+        '401':
+          description: Token inválido o no proporcionado
+        '403':
+          description: Acceso denegado (requiere rol ADMIN)
+        '404':
+          description: Servicio no encontrado
