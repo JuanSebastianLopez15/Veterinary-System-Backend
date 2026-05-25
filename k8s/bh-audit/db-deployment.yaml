@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bh-audit-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bh-audit-db
+  template:
+    metadata:
+      labels:
+        app: bh-audit-db
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: bh-audit-config
+                  key: DB_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: bh-audit-secret
+                  key: DB_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: bh-audit-config
+                  key: DB_NAME
+          volumeMounts:
+            - name: audit-postgres-storage
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: audit-postgres-storage
+          persistentVolumeClaim:
+            claimName: bh-audit-db-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: bh-audit-db-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
