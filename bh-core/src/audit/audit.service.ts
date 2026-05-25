@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-//import { AuditAction } from '../audit/enums/audit-action.enum';
+import { AuditAction } from './enums/audit-action.enum';
 
 interface AuditEventPayload {
   action: string;
@@ -58,8 +58,8 @@ export class AuditService {
     this.emit({
       action: data.accion,
       userId: data.usuarioCodigo,
-      userRole: data.rol,
-      entityType: 'MEDICAL_HISTORY',
+      userRole: data.rol.toLowerCase(),
+      entityType: 'MedicalRecord',
       details: { message: data.detalle },
     });
   }

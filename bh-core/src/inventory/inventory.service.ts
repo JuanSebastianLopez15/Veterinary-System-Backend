@@ -338,7 +338,7 @@ export class InventoryService {
     const updated = this.withAlerts(updatedRow) as MappedProduct;
 
     this.safeAudit({
-      action: AuditAction.AJUSTE_MANUAL_STOCK,
+      action: AuditAction.AJUSTE_INVENTARIO,
       userId: actorId,
       userRole: actorRole,
       entityType: 'InventoryProduct',

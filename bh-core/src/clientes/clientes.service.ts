@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { AuditAction } from '../audit/enums/audit-action.enum';
 @Injectable()
 export class ClientesService {
   constructor(private readonly prisma: PrismaService,
@@ -62,10 +63,10 @@ export class ClientesService {
       });
 
       await this.auditService.emit({
-        action: 'REGISTRO_CLIENTE',
+        action: AuditAction.REGISTRO_CLIENTE,
         userId: usuario.codigo,
-        userRole: 'CLIENTE',
-        entityType: 'CLIENTE',
+        userRole: 'cliente',
+        entityType: 'Client',
         entityId: cliente.codigo,
         details: {
           nombre,
@@ -169,15 +170,6 @@ export class ClientesService {
       throw new NotFoundException('Cliente no encontrado');
     }
 
-    await this.auditService.emit({
-      action: 'CONSULTA_CLIENTE',
-      userId: id,
-      userRole: null,
-      entityType: 'CLIENTE',
-      entityId: id,
-      details: { consulta: 'por_id' },
-    });
-
     return {
       codigo: cliente.codigo,
       nombre: cliente.usuario?.nombre,
@@ -220,10 +212,10 @@ export class ClientesService {
         });
 
         await this.auditService.emit({
-          action: 'ACTUALIZACION_CLIENTE',
+          action: AuditAction.ACTUALIZACION_CLIENTE,
           userId: id,
-          userRole: null,
-          entityType: 'CLIENTE',
+          userRole: 'cliente',
+          entityType: 'Client',
           entityId: id,
           details: body,
         });

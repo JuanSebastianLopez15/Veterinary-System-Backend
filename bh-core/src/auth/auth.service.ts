@@ -8,6 +8,7 @@ import {
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { AuditAction } from '../audit/enums/audit-action.enum';
 import { MailService } from '../mail/mail.service';
 import { JwtService } from '@nestjs/jwt';
 import { formatColombiaDate } from '../common/date.util';
@@ -121,10 +122,10 @@ export class AuthService {
     }
 
     this.auditService.emit({
-      action: 'REGISTRO_DE_USUARIO',
+      action: AuditAction.REGISTRO_USUARIO,
       userId: usuario.codigo,
-      userRole: usuario.rol,
-      entityType: 'Usuario',
+      userRole: usuario.rol.toLowerCase(),
+      entityType: 'User',
       entityId: usuario.codigo,
       details: { correo: usuario.correo, rol: usuario.rol },
     });
@@ -203,10 +204,10 @@ export class AuthService {
     });
 
     this.auditService.emit({
-      action: 'VERIFICACION_CORREO',
+      action: AuditAction.VERIFICACION_CORREO,
       userId: usuario.codigo,
-      userRole: usuario.rol,
-      entityType: 'Usuario',
+      userRole: usuario.rol.toLowerCase(),
+      entityType: 'User',
       entityId: usuario.codigo,
       details: { correo: usuario.correo, estado: nuevoEstado },
     });
@@ -271,10 +272,10 @@ export class AuthService {
       console.error(`No se pudo reenviar el correo de verificacion a ${usuario.correo}`);
     }
     this.auditService.emit({
-      action: 'REENVIO_CODIGO_VERIFICACION',
+      action: AuditAction.REENVIO_CODIGO_VERIFICACION,
       userId: usuario.codigo,
-      userRole: usuario.rol,
-      entityType: 'Usuario',
+      userRole: usuario.rol.toLowerCase(),
+      entityType: 'User',
       entityId: usuario.codigo,
       details: {
         correo: usuario.correo,
@@ -312,10 +313,10 @@ export class AuthService {
 
     if (!usuario) {
       this.auditService.emit({
-        action: 'INTENTO_DE_SESION_FALLIDO',
+        action: AuditAction.LOGIN_FALLIDO,
         userId: null,
         userRole: null,
-        entityType: 'Usuario',
+        entityType: 'User',
         entityId: null,
         details: { correo: correo.toLowerCase(), motivo: 'Usuario no encontrado' },
       });
@@ -332,10 +333,10 @@ export class AuthService {
 
     if (estadosBloqueados[usuario.estado]) {
       this.auditService.emit({
-        action: 'INTENTO_DE_SESION_FALLIDO',
+        action: AuditAction.LOGIN_FALLIDO,
         userId: usuario.codigo,
-        userRole: usuario.rol,
-        entityType: 'Usuario',
+        userRole: usuario.rol.toLowerCase(),
+        entityType: 'User',
         entityId: usuario.codigo,
         details: { correo: usuario.correo, motivo: `Cuenta en estado: ${usuario.estado}` },
       });
@@ -345,10 +346,10 @@ export class AuthService {
     const contrasenaValida = await bcrypt.compare(contrasena, usuario.contrasena);
     if (!contrasenaValida) {
       this.auditService.emit({
-        action: 'INTENTO_DE_SESION_FALLIDO',
+        action: AuditAction.LOGIN_FALLIDO,
         userId: usuario.codigo,
-        userRole: usuario.rol,
-        entityType: 'Usuario',
+        userRole: usuario.rol.toLowerCase(),
+        entityType: 'User',
         entityId: usuario.codigo,
         details: { correo: usuario.correo, motivo: 'Contrasena incorrecta' },
       });
@@ -363,10 +364,10 @@ export class AuthService {
     const token = this.jwtService.sign(payload);
 
     this.auditService.emit({
-      action: 'INICIO_DE_SESION_EXITOSO',
+      action: AuditAction.LOGIN_EXITOSO,
       userId: usuario.codigo,
-      userRole: usuario.rol,
-      entityType: 'Usuario',
+      userRole: usuario.rol.toLowerCase(),
+      entityType: 'User',
       entityId: usuario.codigo,
       details: { correo: usuario.correo, rol: usuario.rol },
     });

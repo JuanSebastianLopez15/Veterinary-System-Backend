@@ -13,8 +13,8 @@ export class FacturacionController {
  
   @Post('generar')
   @Roles('RECEPCIONISTA') // Restricción
-  async generar(@Body() crearFacturaDto: CrearFacturaDto) {
-    return this.facturacionService.generarFactura(crearFacturaDto);
+  async generar(@Body() crearFacturaDto: CrearFacturaDto, @Req() req: any) {
+    return this.facturacionService.generarFactura(crearFacturaDto, req.user?.codigo, req.user?.rol?.toLowerCase());
   }
 
   @Get('mis-facturas/:id/pdf')
@@ -48,8 +48,9 @@ export class FacturacionController {
   async anular(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() anularFacturaDto: AnularFacturaDto,
+    @Req() req: any,
   ) {
-    return this.facturacionService.anularFactura(id, anularFacturaDto);
+    return this.facturacionService.anularFactura(id, anularFacturaDto, req.user?.codigo, req.user?.rol?.toLowerCase());
   }
 
   @Patch(':id/pagar')

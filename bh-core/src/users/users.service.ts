@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { AuditAction } from '../audit/enums/audit-action.enum';
 import { formatColombiaDate } from '../common/date.util';
 
 /**
@@ -183,10 +184,10 @@ export class UsersService {
 
     // Emitir evento de auditoria
     this.auditService.emit({
-      action: 'SUSPENSION_DE_USUARIO',
+      action: AuditAction.SUSPENSION_USUARIO,
       userId: usuario.codigo,
       userRole: usuario.rol,
-      entityType: 'Usuario',
+      entityType: 'User',
       entityId: usuario.codigo,
       details: { correo: usuario.correo, rol: usuario.rol, motivo: motivo.trim() },
     });
@@ -278,10 +279,10 @@ export class UsersService {
 
     // Emitir evento de auditoria
     this.auditService.emit({
-      action: 'RECHAZO_DE_CUENTA',
+      action: AuditAction.RECHAZO_CUENTA,
       userId: usuario.codigo,
       userRole: usuario.rol,
-      entityType: 'Usuario',
+      entityType: 'User',
       entityId: usuario.codigo,
       details: { correo: usuario.correo, rol: usuario.rol, motivo: motivo.trim() },
     });
@@ -355,10 +356,10 @@ export class UsersService {
 
     // Emitir evento de auditoria
     this.auditService.emit({
-      action: 'APROBACION_DE_CUENTA',
+      action: AuditAction.APROBACION_CUENTA,
       userId: usuario.codigo,
       userRole: usuario.rol,
-      entityType: 'Usuario',
+      entityType: 'User',
       entityId: usuario.codigo,
       details: { correo: usuario.correo, rol: usuario.rol },
     });
