@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bh-audit-config
+data:
+  PORT: "3001"
+  DB_HOST: "bh-audit-db-service"
+  DB_PORT: "5432"
+  DB_NAME: "bh_audit_db"
+  DB_USER: "postgres"
+  # URL en formato prisma
+  DATABASE_URL: "postgresql://postgres:postgres_password@bh-audit-db-service:5432/bh_audit_db?schema=public"

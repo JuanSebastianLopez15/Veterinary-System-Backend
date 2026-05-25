@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bh-core-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bh-core-app
+  template:
+    metadata:
+      labels:
+        app: bh-core-app
+    spec:
+      containers:
+        - name: bh-core
+          image: bh-core:latest
+          imagePullPolicy: Never # Usar la imagen construida localmente
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: bh-core-config
+            - secretRef:
+                name: bh-core-secret

@@ -1,26 +1,33 @@
 # Etapa de construcción
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 WORKDIR /usr/src/app
 
 COPY package*.json ./
-RUN npm ci
+RUN npm install
 
 COPY . .
+RUN npx prisma generate
 RUN npm run build
 
 # Etapa de producción
-FROM node:20-alpine AS production
+FROM node:22-alpine AS production
 
 WORKDIR /usr/src/app
 
 COPY package*.json ./
 # solo las dependencias de producción
-RUN npm ci --only=production
+RUN npm install --omit=dev
 
 COPY --from=builder /usr/src/app/dist ./dist
 
-# Puerto en el que corre bh-audit (puede variar según configuración, 3001)
+# Copiar archivos de Prisma necesarios para migraciones en runtime
+COPY --from=builder /usr/src/app/prisma ./prisma
+COPY --from=builder /usr/src/app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /usr/src/app/node_modules/@prisma ./node_modules/@prisma
+
+# Puerto en el que corre bh-audit
 EXPOSE 3001
 
-CMD ["node", "dist/main"]
+# Ejecutar prisma db push para crear/actualizar tablas y luego arrancar la app
+CMD ["sh", "-c", "npx prisma db push --skip-generate && node dist/main"]

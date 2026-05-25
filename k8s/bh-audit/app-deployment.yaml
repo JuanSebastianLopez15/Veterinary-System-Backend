@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bh-audit-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bh-audit-app
+  template:
+    metadata:
+      labels:
+        app: bh-audit-app
+    spec:
+      containers:
+        - name: bh-audit
+          image: bh-audit:latest
+          imagePullPolicy: Never # Usar la imagen construida localmente
+          ports:
+            - containerPort: 3001
+          envFrom:
+            - configMapRef:
+                name: bh-audit-config
+            - secretRef:
+                name: bh-audit-secret
